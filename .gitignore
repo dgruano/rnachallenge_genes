@@ -1,0 +1,68 @@
+# Snakemake internals
+.snakemake/
+.snakemake_timestamp
+.snakejob.*
+
+# Workflow outputs and run artifacts
+results/
+logs/
+benchmarks/
+nonb-pipeline/.snakemake/
+nonb-pipeline/results/
+nonb-pipeline/logs/
+profiles/.snakemake*/
+profiles/*/logs/
+profiles/*/cluster_logs/
+workflow/notebooks/cache/
+
+# Locally downloaded reference data and installed tools
+resources/
+software/
+
+# Other result files
+*.tsv
+*.csv
+*.png
+*.pdf
+*.html
+*.xlsx
+*.npy
+*.npz
+
+# Notes
+*.md
+*.txt
+
+# Sequence files
+*.fasta
+*.fa
+
+# Common build/editor cruft
+__pycache__/
+*.py[cod]
+*.so
+.ipynb_checkpoints/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Virtual environments and packaging
+.env
+.venv
+env/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Logs and archives
+*.log
+*.err
+*.out
+*.tar
+*.tar.gz
+*.zip
+
+# Platform junk
+.DS_Store

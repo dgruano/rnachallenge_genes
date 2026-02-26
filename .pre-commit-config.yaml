@@ -1,0 +1,24 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 25.1.0
+    hooks:
+      - id: black
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2  # Stable with black profile support
+    hooks:
+      - id: isort
+        name: isort (python)
+        args: [--profile, black, --filter-files]  # Filter-files avoids reprocessing
+  - repo: local
+    hooks:
+      - id: nbstripout
+        name: nbstripout with keep-output
+        entry: python -m nbstripout --keep-output $@
+        language: system
+        files: \.ipynb$
