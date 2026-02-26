@@ -1,19 +1,17 @@
 """
 scripts/resolve_ids.py
-Stage 2 — Resolve Transcript IDs to Gene Coordinates
-=====================================================
-For each classified transcript ID, queries the appropriate API:
-  - NCBI  : Entrez efetch / esummary (Biopython Entrez)
-  - Ensembl: REST API /lookup/id (batch)
-  - UCSC  : UCSC REST API /list/tracks + /getData/track
+Resolve NCBI + UCSC Transcript IDs  (Ensembl handled via BioMart wrapper)
+=========================================================================
+Queries NCBI Entrez (esearch → elink → esummary) and the UCSC REST API
+to map transcript IDs → gene + genomic coordinates.
 
-For ambiguous IDs (multiple gene mappings), picks the primary /
-canonical entry and logs all alternatives to ambiguous.tsv.
+Ensembl IDs are intentionally SKIPPED here; they are resolved by the
+separate BioMart sub-DAG:
+  detect_ensembl_species → biomart_lookup (wrapper) → join_ensembl_results
 
-Output schema (resolved_ids.tsv)
----------------------------------
-transcript_id | db_source | gene_id | gene_symbol | organism |
-assembly_accession | chrom | start | end | strand | is_ambiguous
+Output schema (ncbi_ucsc_resolved.tsv) — same unified schema as Ensembl:
+  transcript_id | db_source | gene_id | gene_symbol | organism |
+  assembly_accession | chrom | start | end | strand | is_ambiguous
 """
 
 import json
@@ -42,11 +40,8 @@ Entrez.email = cfg["ncbi_email"]
 MAX_RETRIES = int(cfg.get("max_retries", 3))
 RETRY_WAIT = int(cfg.get("retry_wait_seconds", 5))
 NCBI_BATCH = int(cfg.get("ncbi_batch_size", 50))
-ENSEMBL_BATCH = int(cfg.get("ensembl_batch_size", 50))
-ENSEMBL_REST_URL = "https://rest.ensembl.org"
-UCSC_REST_URL = "https://api.genome.ucsc.edu"
+UCSC_REST = "https://api.genome.ucsc.edu"
 
-# ── Unified output columns ────────────────────────────────────
 RESOLVED_COLS = [
     "transcript_id",
     "db_source",
@@ -75,7 +70,6 @@ AMBIG_COLS = [
 ]
 
 
-# ── Retry helper ─────────────────────────────────────────────
 def with_retry(fn, *args, label="request", **kwargs):
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -89,13 +83,9 @@ def with_retry(fn, *args, label="request", **kwargs):
 
 
 # ════════════════════════════════════════════════════════════
-# NCBI resolver
+# NCBI resolver (unchanged from v1)
 # ════════════════════════════════════════════════════════════
 def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict]]:
-    """
-    Resolve a batch of NCBI RefSeq transcript IDs.
-    Returns (resolved_rows, ambiguous_rows).
-    """
     resolved_rows = []
     ambig_rows = []
 
@@ -107,7 +97,6 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
             f"  NCBI batch {i//NCBI_BATCH + 1}: {batch[:3]}{'...' if len(batch)>3 else ''}"
         )
 
-        # Step 1: accession → GI (nucleotide db)
         handle = with_retry(
             Entrez.esearch,
             db="nucleotide",
@@ -116,20 +105,15 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
             label="ncbi_esearch",
         )
         if handle is None:
-            for tid in batch:
-                log.warning(f"  NCBI esearch failed for batch containing {tid}")
             continue
         search_res = Entrez.read(handle)
         handle.close()
 
         gis = search_res.get("IdList", [])
         if not gis:
-            log.warning(
-                f"  NCBI esearch returned no GIs for batch starting at index {i}"
-            )
+            log.warning(f"  NCBI esearch returned no GIs for batch at index {i}")
             continue
 
-        # Step 2: GI → gene link
         link_handle = with_retry(
             Entrez.elink,
             dbfrom="nucleotide",
@@ -142,7 +126,6 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
         link_results = Entrez.read(link_handle)
         link_handle.close()
 
-        # Build GI → gene_ids mapping
         gi_to_genes: dict[str, list[str]] = {}
         for link_set in link_results:
             src_gi = link_set["IdList"][0] if link_set["IdList"] else None
@@ -156,10 +139,9 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
             ]
             gi_to_genes[src_gi] = gene_ids
 
-        # Step 3: fetch gene summaries
         all_gene_ids = list({g for genes in gi_to_genes.values() for g in genes})
         if not all_gene_ids:
-            log.warning("  No gene links found for this batch")
+            log.warning("  No gene links found for this NCBI batch")
             continue
 
         gene_summary_handle = with_retry(
@@ -191,7 +173,6 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                 "strand": "+" if loc.get("ExonCount", 0) >= 0 else "-",
             }
 
-        # Step 4: fetch nucleotide summaries to map accession → GI
         nucl_handle = with_retry(
             Entrez.esummary,
             db="nucleotide",
@@ -207,15 +188,12 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
         for doc in nucl_summaries:
             acc = doc.get("Caption", "")
             gi = str(doc.get("Gi", ""))
+            acc_v = doc.get("AccessionVersion", acc)
             if acc and gi:
                 accn_to_gi[acc] = gi
-                # Also map versioned accession
-                acc_v = doc.get("AccessionVersion", acc)
                 accn_to_gi[acc_v] = gi
 
-        # Step 5: assemble per-transcript rows
         for tid in batch:
-            # Try both versioned and unversioned accession
             gi = accn_to_gi.get(tid) or accn_to_gi.get(tid.split(".")[0])
             if gi is None:
                 log.warning(f"  NCBI: could not map {tid} to a GI")
@@ -229,7 +207,7 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
             is_ambiguous = len(gene_ids_for_tid) > 1
             if is_ambiguous:
                 log.info(
-                    f"  Ambiguous: {tid} maps to {len(gene_ids_for_tid)} genes — picking primary"
+                    f"  Ambiguous: {tid} → {len(gene_ids_for_tid)} genes, picking primary"
                 )
 
             primary_gid = gene_ids_for_tid[0]
@@ -269,131 +247,27 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                     }
                 )
 
-        time.sleep(0.12)  # ~8 req/sec with API key
+        time.sleep(0.12)
 
     return resolved_rows, ambig_rows
 
 
 # ════════════════════════════════════════════════════════════
-# Ensembl resolver
-# ════════════════════════════════════════════════════════════
-def _ensembl_post(endpoint: str, payload: dict, label: str) -> Optional[dict]:
-    """POST to Ensembl REST and return JSON."""
-    url = f"{ENSEMBL_REST_URL}{endpoint}"
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
-
-    def _do():
-        resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=60)
-        resp.raise_for_status()
-        return resp.json()
-
-    return with_retry(_do, label=label)
-
-
-def _ensembl_get(endpoint: str, label: str) -> Optional[dict]:
-    """GET from Ensembl REST and return JSON."""
-    url = f"{ENSEMBL_REST_URL}{endpoint}"
-    headers = {"Accept": "application/json"}
-
-    def _do():
-        resp = requests.get(url, headers=headers, timeout=30)
-        resp.raise_for_status()
-        return resp.json()
-
-    return with_retry(_do, label=label)
-
-
-def resolve_ensembl_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict]]:
-    resolved_rows = []
-    ambig_rows = []
-
-    log.info(
-        f"  Ensembl: resolving {len(transcript_ids)} IDs in batches of {ENSEMBL_BATCH}"
-    )
-
-    for i in range(0, len(transcript_ids), ENSEMBL_BATCH):
-        batch = transcript_ids[i : i + ENSEMBL_BATCH]
-        log.debug(
-            f"  Ensembl batch {i//ENSEMBL_BATCH + 1}: {batch[:3]}{'...' if len(batch)>3 else ''}"
-        )
-
-        # Batch lookup
-        result = _ensembl_post(
-            "/lookup/id",
-            {"ids": batch, "expand": 1},
-            label="ensembl_lookup",
-        )
-        if result is None:
-            log.warning(f"  Ensembl batch lookup failed for batch at index {i}")
-            continue
-
-        for tid in batch:
-            data = result.get(tid)
-            if data is None or "error" in data:
-                log.warning(f"  Ensembl: {tid} not found — {data}")
-                continue
-
-            # data is transcript-level; get parent gene
-            parent_id = data.get("Parent") or data.get("gene_id")
-            if not parent_id:
-                log.warning(f"  Ensembl: no parent gene for {tid}")
-                continue
-
-            gene_data = _ensembl_get(
-                f"/lookup/id/{parent_id}?expand=0", label=f"ensembl_gene_{parent_id}"
-            )
-            if gene_data is None:
-                log.warning(f"  Ensembl: could not fetch gene {parent_id}")
-                continue
-
-            # Strand: Ensembl uses 1 / -1
-            strand = "+" if gene_data.get("strand", 1) == 1 else "-"
-            # Assembly: infer from species + coord_system_version
-            assembly = gene_data.get("assembly_name", "")
-
-            resolved_rows.append(
-                {
-                    "transcript_id": tid,
-                    "db_source": "ensembl",
-                    "gene_id": parent_id,
-                    "gene_symbol": gene_data.get("display_name", ""),
-                    "organism": gene_data.get("species", "").replace("_", " "),
-                    "assembly_accession": assembly,
-                    "chrom": gene_data.get("seq_region_name", ""),
-                    "start": int(gene_data.get("start", 0)),
-                    "end": int(gene_data.get("end", 0)),
-                    "strand": strand,
-                    "is_ambiguous": False,  # Ensembl transcript→gene is 1:1
-                }
-            )
-
-        time.sleep(0.1)  # be polite to Ensembl REST
-
-    return resolved_rows, ambig_rows
-
-
-# ════════════════════════════════════════════════════════════
-# UCSC resolver
+# UCSC resolver (unchanged from v1)
 # ════════════════════════════════════════════════════════════
 def resolve_ucsc_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict]]:
-    """
-    Resolve UCSC transcript IDs via the UCSC REST API.
-    UCSC IDs encode the assembly (e.g. uc001aaa.3 → hg19).
-    We query the knownGene / refGene track for coordinates.
-    """
     resolved_rows = []
     ambig_rows = []
 
-    log.info(f"  UCSC: resolving {len(transcript_ids)} IDs individually")
+    log.info(f"  UCSC: resolving {len(transcript_ids)} IDs")
 
-    # UCSC IDs don't encode species reliably; we try common assemblies
     UCSC_ASSEMBLIES = ["hg38", "hg19", "mm39", "mm10", "rn7", "dm6", "danRer11"]
 
     for tid in transcript_ids:
         found = False
         for assembly in UCSC_ASSEMBLIES:
             url = (
-                f"{UCSC_REST_URL}/getData/track"
+                f"{UCSC_REST}/getData/track"
                 f"?genome={assembly}&track=knownGene&name={tid}"
             )
 
@@ -417,19 +291,18 @@ def resolve_ucsc_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                     f"  UCSC: {tid} → {len(hits)} hits in {assembly} — picking first"
                 )
 
-            strand = hit.get("strand", "+")
             resolved_rows.append(
                 {
                     "transcript_id": tid,
                     "db_source": "ucsc",
                     "gene_id": hit.get("name2", hit.get("name", "")),
                     "gene_symbol": hit.get("name2", ""),
-                    "organism": "",  # UCSC REST doesn't return species name directly
+                    "organism": "",
                     "assembly_accession": assembly,
                     "chrom": hit.get("chrom", ""),
                     "start": int(hit.get("txStart", 0)),
                     "end": int(hit.get("txEnd", 0)),
-                    "strand": strand,
+                    "strand": hit.get("strand", "+"),
                     "is_ambiguous": is_ambiguous,
                 }
             )
@@ -452,7 +325,7 @@ def resolve_ucsc_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                 )
 
             found = True
-            break  # stop trying assemblies once found
+            break
 
         if not found:
             log.warning(f"  UCSC: {tid} not found in any tested assembly")
@@ -463,10 +336,14 @@ def resolve_ucsc_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
 
 
 # ── Main ─────────────────────────────────────────────────────
-log.info("Stage 2: Resolving transcript IDs to gene coordinates")
+log.info("resolve_ids: resolving NCBI and UCSC transcript IDs")
+log.info("NOTE: Ensembl IDs are resolved separately via the BioMart wrapper sub-DAG")
 
 df_cls = pd.read_csv(input_tsv, sep="\t")
-log.info(f"Loaded {len(df_cls)} classified transcript IDs")
+
+# Explicitly exclude Ensembl — handled by BioMart pipeline
+df_cls = df_cls[df_cls["db_source"] != "ensembl"]
+log.info(f"IDs to resolve (NCBI + UCSC): {len(df_cls)}")
 
 all_resolved: list[dict] = []
 all_ambig: list[dict] = []
@@ -477,15 +354,13 @@ for db_source, group in df_cls.groupby("db_source"):
 
     if db_source == "ncbi":
         res, amb = resolve_ncbi_batch(ids)
-    elif db_source == "ensembl":
-        res, amb = resolve_ensembl_batch(ids)
     elif db_source == "ucsc":
         res, amb = resolve_ucsc_batch(ids)
     else:
         log.warning(f"No resolver for db_source={db_source!r} — skipping")
         continue
 
-    log.info(f"  → {len(res)} resolved, {len(amb)} ambiguous alternatives recorded")
+    log.info(f"  → {len(res)} resolved, {len(amb)} ambiguous alternatives")
     all_resolved.extend(res)
     all_ambig.extend(amb)
 
@@ -495,16 +370,10 @@ df_ambig = pd.DataFrame(all_ambig, columns=AMBIG_COLS)
 df_resolved.to_csv(out_resolved, sep="\t", index=False)
 df_ambig.to_csv(out_ambig, sep="\t", index=False)
 
-# ── Summary ──────────────────────────────────────────────────
-total_in = len(df_cls)
-total_out = len(df_resolved)
-missed = total_in - total_out
-
 log.info("=" * 60)
-log.info(f"Input transcripts            : {total_in}")
-log.info(f"Successfully resolved        : {total_out}")
-log.info(f"Failed to resolve            : {missed}")
-log.info(f"Ambiguous (alternatives)     : {len(df_ambig)}")
-log.info(f"Written resolved    → {out_resolved}")
-log.info(f"Written ambiguous   → {out_ambig}")
-log.info("Stage 2 complete.")
+log.info(f"NCBI + UCSC input   : {len(df_cls)}")
+log.info(f"Resolved            : {len(df_resolved)}")
+log.info(f"Failed              : {len(df_cls) - len(df_resolved)}")
+log.info(f"Ambiguous alts      : {len(df_ambig)}")
+log.info(f"Written → {out_resolved}")
+log.info("resolve_ids complete.")

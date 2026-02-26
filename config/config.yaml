@@ -16,15 +16,30 @@ downstream_bp: 2000
 ncbi_api_key: "YOUR_NCBI_API_KEY_HERE"
 ncbi_email: "your.email@example.com"
 
-# --- Cache ---
-cache_dir: "resources/cache"          # Genome assemblies cached here
-assembly_index_ext: ".fai"            # samtools faidx index extension
+# --- Ensembl BioMart settings ---
+# Pinned release for reproducibility.
+# Check https://www.ensembl.org/info/website/archives/index.html for available releases.
+ensembl_release: "113"
+# Ensembl transcript ID prefix → (species, genome_build) mapping.
+# Add entries here for any species present in your input FASTAs.
+# Species must be lowercase underscore format; build must match the given release.
+ensembl_species:
+  ENST:    {species: "homo_sapiens",            build: "GRCh38"}
+  ENSMUST: {species: "mus_musculus",             build: "GRCm39"}
+  ENSRNOT: {species: "rattus_norvegicus",        build: "mRatBN7.2"}
+  ENSDART: {species: "danio_rerio",              build: "GRCz11"}
+  ENSGALT: {species: "gallus_gallus",            build: "bGalGal1"}
+  ENSSSCR: {species: "sus_scrofa",               build: "Sscrofa11.1"}
+  ENSBTRT: {species: "bos_taurus",               build: "ARS-UCD1.3"}
+  ENSCAFT: {species: "canis_lupus_familiaris",   build: "ROS_Cfam_1.0"}
 
-# --- API settings ---
-max_retries: 3                         # Retries on API failure
-retry_wait_seconds: 5                  # Wait between retries
-ncbi_batch_size: 50                    # IDs per NCBI batch request
-ensembl_batch_size: 50                 # IDs per Ensembl batch request
+# --- Cache ---
+cache_dir: "resources/cache"
+
+# --- API settings (NCBI + UCSC) ---
+max_retries: 3
+retry_wait_seconds: 5
+ncbi_batch_size: 50
 
 # --- Output ---
 results_dir: "results"

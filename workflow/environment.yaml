@@ -4,16 +4,28 @@ channels:
   - bioconda
   - defaults
 dependencies:
+  # --- Core ---
   - python=3.11
   - snakemake>=8.0
   - snakemake-executor-plugin-slurm
+
+  # --- Python scientific stack ---
   - biopython>=1.83
   - pandas>=2.0
   - requests>=2.31
-  - samtools>=1.18
   - pyyaml>=6.0
-  - jinja2>=3.1          # for HTML report
-  - tqdm>=4.66           # progress bars in scripts
-  - pip
-  - pip:
-    - snakemake-executor-plugin-slurm  # ensure latest version via pip if needed
+  - jinja2>=3.1
+  - tqdm>=4.66
+
+  # --- Sequence tools ---
+  - samtools>=1.18
+
+  # --- R + BioMart wrapper dependencies ---
+  # The wrapper manages its own conda env, but listing here documents the requirement.
+  # Snakemake will auto-install these via the wrapper's bundled environment.yaml.
+  - r-base>=4.3
+  - bioconductor-biomart>=2.58
+  - r-tidyverse>=2.0
+  - r-nanoparquet>=0.3
+  - r-fs>=1.6
+  - r-cli>=3.6
