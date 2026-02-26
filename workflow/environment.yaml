@@ -1,0 +1,19 @@
+name: rna_flanking_pipeline
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - snakemake>=8.0
+  - snakemake-executor-plugin-slurm
+  - biopython>=1.83
+  - pandas>=2.0
+  - requests>=2.31
+  - samtools>=1.18
+  - pyyaml>=6.0
+  - jinja2>=3.1          # for HTML report
+  - tqdm>=4.66           # progress bars in scripts
+  - pip
+  - pip:
+    - snakemake-executor-plugin-slurm  # ensure latest version via pip if needed

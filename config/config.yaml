@@ -1,0 +1,32 @@
+# ============================================================
+# RNA Flanking Sequence Pipeline — Configuration
+# ============================================================
+
+# --- Input ---
+input_fastas:
+  - "input_fastas/transcripts.fasta"
+  # - "input_fastas/transcripts2.fasta"  # Optional second file
+
+# --- Flanking window (base pairs) ---
+upstream_bp: 2000
+downstream_bp: 2000
+
+# --- NCBI credentials (required for reliable API access) ---
+# Register at: https://www.ncbi.nlm.nih.gov/account/
+ncbi_api_key: "YOUR_NCBI_API_KEY_HERE"
+ncbi_email: "your.email@example.com"
+
+# --- Cache ---
+cache_dir: "resources/cache"          # Genome assemblies cached here
+assembly_index_ext: ".fai"            # samtools faidx index extension
+
+# --- API settings ---
+max_retries: 3                         # Retries on API failure
+retry_wait_seconds: 5                  # Wait between retries
+ncbi_batch_size: 50                    # IDs per NCBI batch request
+ensembl_batch_size: 50                 # IDs per Ensembl batch request
+
+# --- Output ---
+results_dir: "results"
+logs_dir: "logs"
+benchmarks_dir: "benchmarks"

@@ -1,0 +1,32 @@
+# ============================================================
+# Snakemake SLURM Executor Plugin — Profile Configuration
+# Place this file at: profiles/slurm/config.yaml
+# Run pipeline with: snakemake --profile profiles/slurm
+# ============================================================
+
+executor: slurm
+
+# --- Global job settings ---
+jobs: 100                          # Max concurrent SLURM jobs
+latency-wait: 60                   # Seconds to wait for output files after job completes
+rerun-incomplete: true
+keep-going: true                   # Continue pipeline even if some jobs fail
+printshellcmds: true
+show-failed-logs: true
+
+# --- Default SLURM resource settings (overridden per-rule in Snakefile) ---
+default-resources:
+  slurm_partition: "short"
+  slurm_account: "YOUR_ACCOUNT_HERE"    # Replace with your HPC account
+  runtime: 60                            # Minutes
+  mem_mb: 4096                           # MB
+  cpus_per_task: 1
+  nodes: 1
+  slurm_extra: ""                        # e.g. "--mail-type=FAIL --mail-user=you@example.com"
+
+# --- Retries for failed SLURM jobs ---
+retries: 2
+
+# --- Logging ---
+# Snakemake logs go to .snakemake/log/
+# Per-job SLURM stdout/stderr are captured by rule log: directives
