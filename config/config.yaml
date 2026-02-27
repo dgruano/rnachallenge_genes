@@ -4,34 +4,36 @@
 
 # --- Input ---
 input_fastas:
-  - "input_fastas/transcripts.fasta"
-  # - "input_fastas/transcripts2.fasta"  # Optional second file
+  - "resources/RNAChallenge.fa"
+  # - "input_fastas/transcripts2.fasta"
 
 # --- Flanking window (base pairs) ---
-upstream_bp: 2000
-downstream_bp: 2000
+upstream_bp: 1000
+downstream_bp: 1000
 
-# --- NCBI credentials (required for reliable API access) ---
+# --- NCBI credentials ---
 # Register at: https://www.ncbi.nlm.nih.gov/account/
-ncbi_api_key: "YOUR_NCBI_API_KEY_HERE"
-ncbi_email: "your.email@example.com"
+ncbi_api_key: "***REMOVED***"
+ncbi_email: "***REMOVED***"
 
 # --- Ensembl BioMart settings ---
 # Pinned release for reproducibility.
-# Check https://www.ensembl.org/info/website/archives/index.html for available releases.
-ensembl_release: "113"
-# Ensembl transcript ID prefix → (species, genome_build) mapping.
-# Add entries here for any species present in your input FASTAs.
-# Species must be lowercase underscore format; build must match the given release.
-ensembl_species:
-  ENST:    {species: "homo_sapiens",            build: "GRCh38"}
-  ENSMUST: {species: "mus_musculus",             build: "GRCm39"}
-  ENSRNOT: {species: "rattus_norvegicus",        build: "mRatBN7.2"}
-  ENSDART: {species: "danio_rerio",              build: "GRCz11"}
-  ENSGALT: {species: "gallus_gallus",            build: "bGalGal1"}
-  ENSSSCR: {species: "sus_scrofa",               build: "Sscrofa11.1"}
-  ENSBTRT: {species: "bos_taurus",               build: "ARS-UCD1.3"}
-  ENSCAFT: {species: "canis_lupus_familiaris",   build: "ROS_Cfam_1.0"}
+# Check https://www.ensembl.org/info/website/archives/index.html
+ensembl_release: "115"
+
+# --- Ensembl species overrides (OPTIONAL) ---
+# The pipeline auto-detects species from transcript ID prefixes using a
+# built-in reference table covering all current Ensembl vertebrates.
+# Only add entries here if:
+#   (a) the pipeline reports an unknown prefix and you know what it maps to, OR
+#   (b) you want to override the built-in build version for a species.
+# Format: <TRANSCRIPT_PREFIX>: {species: "<ensembl_species_name>", build: "<assembly>"}
+# Example:
+# ensembl_species_overrides:
+#   ENSXETR: {species: "xenopus_tropicalis", build: "UCB_Xtro_10.0"}
+ensembl_species_overrides:
+    ENSBTAT: {species: "bos_taurus", build: "ARS-UCD2.0"}
+    ENSSSCT: {species: "sus_scrofa", build: "Sscrofa11.1"}
 
 # --- Cache ---
 cache_dir: "resources/cache"

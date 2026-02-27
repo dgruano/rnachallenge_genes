@@ -16,9 +16,9 @@ show-failed-logs: true
 
 # --- Default SLURM resource settings (overridden per-rule in Snakefile) ---
 default-resources:
-  slurm_partition: "short"
-  slurm_account: "YOUR_ACCOUNT_HERE"    # Replace with your HPC account
-  runtime: 60                            # Minutes
+  slurm_partition: "compute"
+#  slurm_account: "YOUR_ACCOUNT_HERE"    # Replace with your HPC account
+  runtime: 120                            # Minutes
   mem_mb: 4096                           # MB
   cpus_per_task: 1
   nodes: 1

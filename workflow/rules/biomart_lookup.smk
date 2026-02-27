@@ -26,8 +26,6 @@ rule biomart_lookup:
         table = f"{RESULTS}/biomart/{{species}}.tsv.gz",
     log:
         f"{LOGS}/biomart_lookup/{{species}}.log",
-    benchmark:
-        f"{BENCHMARKS}/biomart_lookup/{{species}}.tsv",
     params:
         biomart    = "genes",
         species    = lambda wc: wc.species,
@@ -48,7 +46,7 @@ rule biomart_lookup:
     cache:
         "omit-software"    # Reuse across runs with same release; invalidated if release changes
     resources:
-        slurm_partition = "short",
+        slurm_partition = "compute",
         runtime         = 60,
         mem_mb          = 8192,
         cpus_per_task   = 2,

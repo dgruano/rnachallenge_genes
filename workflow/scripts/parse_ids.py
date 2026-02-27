@@ -55,6 +55,192 @@ DB_PATTERNS: list[tuple[str, re.Pattern]] = [
             re.IGNORECASE,
         ),
     ),
+    # WormBase (full header-encoded IDs or gene-style IDs)
+    (
+        "wormbase",
+        re.compile(
+            r".*_wormbase:known_chromosome:WBcel\d+:",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "wormbase",
+        re.compile(
+            r"^[A-Z0-9]{1,3}\d+[A-Z]?\d*\.\d+[a-z]?(?:\.\d+)?$",
+            re.IGNORECASE,
+        ),
+    ),
+    # Plant gene/transcript IDs (Solanum, Oryza, Glycine, etc.)
+    (
+        "plant",
+        re.compile(r"^Solyc\d+g\d+\.\d+\.\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^OS\d+T\d+(?:_\d+)?(?:_cdna)?$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Glyma\.\d{2}G\d{6}(?:\.\d+)?$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^AT\dG\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Zm\d+g\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^GRMZM\w+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^LOC_Os\d+g\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Os\d+g\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^TraesCS\w+\.\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Bradi\dg\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Bra\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^BnaA\d+g\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^BnaC\d+g\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Bo\dg\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^AET\w+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Amtr_\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^evm\.model\.\w+\.\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Cre\d+\.g\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Pp\d+s\d+_\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Medtr\dg\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^GSMUA_\w+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^OB\d+g\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Si\d+g\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Thecc1EG\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^orange1\.1g\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^cassava\d+\.\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^AC\d+\.\d+", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Potri\.\d+G\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^Sobic\.\d+G\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^VIT_\d+s\d+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        re.compile(r"^PGSC\d+DM\w+", re.IGNORECASE),
+    ),
+    # FlyBase (Drosophila)
+    (
+        "flybase",
+        re.compile(r"^FBtr\d+$", re.IGNORECASE),
+    ),
+    (
+        "flybase",
+        re.compile(r"^FBgn\d+$", re.IGNORECASE),
+    ),
+    # WormBase gene IDs
+    (
+        "wormbase",
+        re.compile(r"^WBGene\d+$", re.IGNORECASE),
+    ),
+    # SGD (yeast)
+    (
+        "sgd",
+        re.compile(r"^Y[A-P][LR]\d+[WC](?:_[A-Z])?$", re.IGNORECASE),
+    ),
+    (
+        "sgd",
+        re.compile(r"^Q\d{4}$", re.IGNORECASE),
+    ),
+    (
+        "sgd",
+        re.compile(r"^Source:SGD;Acc:S\d+$", re.IGNORECASE),
+    ),
+]
+
+# Embedded accessions found inside longer headers (GI/RefSeq, etc.)
+EMBEDDED_PATTERNS: list[tuple[str, re.Pattern]] = [
+    (
+        "ncbi",
+        re.compile(
+            r"(?:ref[\|_])?((?:NM|NR|XM|XR|NP|XP|NG|NC|NT|NW|NZ)_\d+(?:\.\d+)?)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "ensembl",
+        re.compile(r"(ENS[A-Z]*T\d{11}(?:\.\d+)?)", re.IGNORECASE),
+    ),
+    (
+        "ucsc",
+        re.compile(r"(uc\d{3}[a-z]{3}\.\d+)", re.IGNORECASE),
+    ),
 ]
 
 
@@ -82,6 +268,16 @@ def extract_transcript_id(header: str) -> str:
     return token
 
 
+def find_embedded_accession(header: str) -> tuple[str, str] | None:
+    """Return (accession, db) if a known ID is embedded in the header."""
+    for db, pattern in EMBEDDED_PATTERNS:
+        match = pattern.search(header)
+        if match:
+            accession = match.group(1)
+            return accession, db
+    return None
+
+
 # ── Main ─────────────────────────────────────────────────────
 log.info("Stage 1: Parsing and classifying transcript IDs")
 log.info(f"Input FASTA files: {fastas}")
@@ -107,6 +303,15 @@ for fasta_path in fastas:
         raw_header = rec.description
         transcript_id = extract_transcript_id(rec.id)
         db_source = classify_id(transcript_id)
+
+        if db_source == "unknown":
+            embedded = find_embedded_accession(raw_header)
+            if embedded:
+                transcript_id, db_source = embedded
+                log.debug(
+                    f"  Fallback extraction: {transcript_id!r} → {db_source} "
+                    f"(from header: {raw_header!r})"
+                )
 
         row = {
             "transcript_id": transcript_id,

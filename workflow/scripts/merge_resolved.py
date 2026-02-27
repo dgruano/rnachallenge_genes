@@ -24,10 +24,15 @@ log = get_logger("merge_resolved", snakemake.log[0])
 
 in_ncbi_ucsc_res = snakemake.input.ncbi_ucsc_resolved
 in_ensembl_res = snakemake.input.ensembl_resolved
+in_external_res = snakemake.input.external_resolved
 in_ncbi_ucsc_amb = snakemake.input.ncbi_ucsc_ambiguous
 in_ensembl_amb = snakemake.input.ensembl_ambiguous
+in_external_amb = snakemake.input.external_ambiguous
+in_unknown = snakemake.input.unknown_ids
+in_external_unres = snakemake.input.external_unresolved
 out_resolved = snakemake.output.resolved
 out_ambiguous = snakemake.output.ambiguous
+out_unresolved = snakemake.output.unresolved
 
 log.info("merge_resolved: combining NCBI/UCSC and Ensembl resolution outputs")
 
@@ -45,12 +50,17 @@ def safe_read(path: str, label: str) -> pd.DataFrame:
 
 df_ncbi_ucsc = safe_read(in_ncbi_ucsc_res, "ncbi_ucsc_resolved")
 df_ensembl = safe_read(in_ensembl_res, "ensembl_resolved")
+df_external = safe_read(in_external_res, "external_resolved")
 df_amb_nu = safe_read(in_ncbi_ucsc_amb, "ncbi_ucsc_ambiguous")
 df_amb_ens = safe_read(in_ensembl_amb, "ensembl_ambiguous")
+df_amb_ext = safe_read(in_external_amb, "external_ambiguous")
+df_unknown = safe_read(in_unknown, "unknown_ids")
+df_external_unres = safe_read(in_external_unres, "external_unresolved")
 
 # ── Concatenate ───────────────────────────────────────────────
-df_all_resolved = pd.concat([df_ncbi_ucsc, df_ensembl], ignore_index=True)
-df_all_ambig = pd.concat([df_amb_nu, df_amb_ens], ignore_index=True)
+df_all_resolved = pd.concat([df_ncbi_ucsc, df_ensembl, df_external], ignore_index=True)
+df_all_ambig = pd.concat([df_amb_nu, df_amb_ens, df_amb_ext], ignore_index=True)
+df_all_unresolved = pd.concat([df_unknown, df_external_unres], ignore_index=True)
 
 # Sanity check: flag any duplicate transcript IDs (shouldn't happen but log if so)
 dupes = df_all_resolved[df_all_resolved.duplicated(subset="transcript_id", keep=False)]
@@ -65,16 +75,20 @@ if not dupes.empty:
 
 df_all_resolved.to_csv(out_resolved, sep="\t", index=False)
 df_all_ambig.to_csv(out_ambiguous, sep="\t", index=False)
+df_all_unresolved.to_csv(out_unresolved, sep="\t", index=False)
 
 # ── Summary ──────────────────────────────────────────────────
 log.info("=" * 60)
 log.info(f"NCBI/UCSC resolved   : {len(df_ncbi_ucsc)}")
 log.info(f"Ensembl resolved     : {len(df_ensembl)}")
+log.info(f"External resolved    : {len(df_external)}")
 log.info(f"Total resolved       : {len(df_all_resolved)}")
 log.info(f"Total ambiguous alts : {len(df_all_ambig)}")
+log.info(f"Total unresolved     : {len(df_all_unresolved)}")
 if not df_all_resolved.empty and "db_source" in df_all_resolved.columns:
     for src, grp in df_all_resolved.groupby("db_source"):
         log.info(f"  {src:<12}: {len(grp)} resolved")
 log.info(f"Written resolved_ids.tsv → {out_resolved}")
 log.info(f"Written ambiguous.tsv    → {out_ambiguous}")
+log.info(f"Written unresolved.tsv   → {out_unresolved}")
 log.info("merge_resolved complete.")

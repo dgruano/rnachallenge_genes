@@ -39,7 +39,7 @@ rule join_ensembl_results:
     benchmark:
         f"{BENCHMARKS}/join_ensembl_results.tsv",
     resources:
-        slurm_partition = "short",
+        slurm_partition = "compute",
         runtime         = 30,
         mem_mb          = 8192,
         cpus_per_task   = 2,

@@ -7,7 +7,7 @@
 #     ├── resolve_ids (NCBI + UCSC)                       ─┐
 #     └── detect_ensembl_species [checkpoint]              │
 #               └── biomart_lookup (×N species) [wrapper]  ├── merge_resolved
-#                         └── join_ensembl_results         ─┘
+#                         └── join_ensembl_results        ─┘
 #                                                               │
 #                                                     download_assemblies [checkpoint]
 #                                                               │
@@ -28,15 +28,16 @@ UPSTREAM   = config["upstream_bp"]
 DOWNSTREAM = config["downstream_bp"]
 
 # ── Rule modules ─────────────────────────────────────────────
-include: "rules/parse_ids.smk"
-include: "rules/resolve_ids.smk"                # NCBI + UCSC
-include: "rules/detect_ensembl_species.smk"     # checkpoint: infer species
-include: "rules/biomart_lookup.smk"             # wrapper: per-species BioMart
-include: "rules/join_ensembl_results.smk"       # join BioMart tables → Ensembl resolved
-include: "rules/merge_resolved.smk"             # unify all three DB streams
-include: "rules/download_assemblies.smk"        # checkpoint: cache genome FASTAs
-include: "rules/extract_sequences.smk"
-include: "rules/report.smk"
+include: "workflow/rules/parse_ids.smk"
+include: "workflow/rules/resolve_ids.smk"                # NCBI + UCSC
+include: "workflow/rules/resolve_external_ids.smk"       # plants + WormBase
+include: "workflow/rules/detect_ensembl_species.smk"     # checkpoint: infer species
+include: "workflow/rules/biomart_lookup.smk"             # wrapper: per-species BioMart
+include: "workflow/rules/join_ensembl_results.smk"       # join BioMart tables → Ensembl resolved
+include: "workflow/rules/merge_resolved.smk"             # unify all three DB streams
+include: "workflow/rules/download_assemblies.smk"        # checkpoint: cache genome FASTAs
+include: "workflow/rules/extract_sequences.smk"
+include: "workflow/rules/report.smk"
 
 # ── Target rule ──────────────────────────────────────────────
 rule all:
