@@ -1,30 +1,30 @@
-name: rna_flanking_pipeline
+name: rnachallenge_genes
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
   # --- Core ---
-  - python=3.11
-  - snakemake>=8.0
-  - snakemake-executor-plugin-slurm
+  - python=3.13
+  - snakemake>=9.13.2
+  - snakemake-executor-plugin-slurm=1.9.2
 
   # --- Python scientific stack ---
-  - biopython>=1.83
-  - pandas>=2.0
-  - requests>=2.31
+  - biopython>=1.86
+  - pandas>=2.3
+  - requests>=2.32
   - pyyaml>=6.0
   - jinja2>=3.1
   - tqdm>=4.66
 
   # --- Sequence tools ---
-  - samtools>=1.18
+  - samtools>=1.23
 
   # --- R + BioMart wrapper dependencies ---
   # The wrapper manages its own conda env, but listing here documents the requirement.
   # Snakemake will auto-install these via the wrapper's bundled environment.yaml.
-  - r-base>=4.3
-  - bioconductor-biomart>=2.58
+  - r-base
+  - bioconductor-biomart>=2.62
   - r-tidyverse>=2.0
   - r-nanoparquet>=0.3
   - r-fs>=1.6

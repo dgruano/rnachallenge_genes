@@ -23,7 +23,7 @@ rule resolve_ids:
     benchmark:
         f"{BENCHMARKS}/resolve_ids.tsv",
     resources:
-        slurm_partition = "short",
+        slurm_partition = "compute",
         runtime         = 120,
         mem_mb          = 4096,
         cpus_per_task   = 2,
