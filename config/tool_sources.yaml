@@ -1,0 +1,199 @@
+# ============================================================
+# Tool Dataset Download Configuration
+# ============================================================
+# Maps each lncRNA/mRNA classifier to its published dataset URLs.
+# Source: Singh et al. Supplementary Table 9.
+#
+# Strategies:
+#   github       - enumerate files via GitHub Contents API, download each
+#   direct_list  - download a fixed list of URLs
+#   sourceforge  - enumerate files via SourceForge JSON API
+#   osf        - enumerate files via OSF storage API
+#   readme_dir   - fetch README from genouest server and infer adjacent files
+#   web        - single URL attempt (likely to need manual intervention)
+# ============================================================
+
+tool_datasets_dir: "resources/tool_datasets"
+
+tools:
+  CPAT:
+    strategy: sourceforge
+    project: rna-cpat
+    sf_paths:
+      - v1.2.2/test   # test sequences used in the CPAT paper
+      - v1.2.2/train  # training sequences included for completeness
+    extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz", ".txt"]
+    note: >
+      Both test/ and train/ are downloaded from SourceForge v1.2.2.
+      Only the Human test set (4000 mRNAs + 4000 lncRNAs) is listed in
+      Singh et al. supp1.txt, but the train set is included here in case
+      RNAChallenge.fa contains sequences drawn from it.
+
+  PLEK:
+    strategy: sourceforge
+    project: plek
+    sf_paths:
+      - data_vertebrate
+      - data_human
+      - data_mouse
+    rss_include_all_files: true
+    extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz"]
+
+  PlncPRO:
+    strategy: github
+    owner: urmi-21
+    repo: PLncPRO
+    branch: master
+    path: sample_data   # recurses into sample_data/train and sample_data/test
+    extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz"]
+    note: >
+      Sample data from https://github.com/urmi-21/PLncPRO/tree/master/sample_data.
+      The original portal (http://ccbb.jnu.ac.in/plncpro/) is inaccessible;
+      this GitHub repo contains representative train/test FASTA files.
+
+  CPC2:
+    strategy: direct_list
+    urls:
+      # Human
+      - "http://cpc2.gao-lab.org/download_file.php?filename=mRNA_human.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=lncRNA_human.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=sncRNA_human.faa"
+      # Mouse
+      - "http://cpc2.gao-lab.org/download_file.php?filename=mRNA_mouse.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=lncRNA_mouse.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=sncRNA_mouse.faa"
+      # Zebrafish
+      - "http://cpc2.gao-lab.org/download_file.php?filename=mRNA_zebrafish.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=lncRNA_zebrafish.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=sncRNA_zebrafish.faa"
+      # Fruitfly
+      - "http://cpc2.gao-lab.org/download_file.php?filename=mRNA_fruitfly.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=lncRNA_fruitfly.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=sncRNA_fruitfly.faa"
+      # Worm
+      - "http://cpc2.gao-lab.org/download_file.php?filename=mRNA_worm.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=lncRNA_worm.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=sncRNA_worm.faa"
+      # Arabidopsis
+      - "http://cpc2.gao-lab.org/download_file.php?filename=mRNA_arabidopsis.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=lncRNA_arabidopsis.faa"
+      - "http://cpc2.gao-lab.org/download_file.php?filename=sncRNA_arabidopsis.faa"
+
+  FEELnc:
+    strategy: web
+    url: "http://tools.genouest.org/data/tderrien/FEELnc_article_supplementary/human/README_human"
+    note: >
+      The genouest supplementary server is offline (all paths return 404).
+      Download the FEELnc datasets from the Zenodo archive or the FEELnc
+      GitHub repo (https://github.com/tderrien/FEELnc) and place .fa/.fasta
+      files in resources/tool_datasets/FEELnc/.
+
+  mRNN:
+    strategy: osf
+    node_id: "4htpy"
+    extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz", ".txt"]
+
+  LncRNANet:
+    strategy: github
+    owner: nofundamental
+    repo: lncRNAnet
+    branch: master
+    path: data/test
+    extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz", ".txt"]
+  
+  LncADeep:
+    strategy: github
+    owner: cyang235
+    repo: LncADeep
+    branch: master
+    path: data/LncADeep_lncRNA
+    extensions: [".fa"]
+    note: >
+      Portal page — datasets not directly downloadable.
+      Download manually from http://cqb.pku.edu.cn/ZhuLab/lncadeep/ and place
+      *.fa / *.fasta files in resources/tool_datasets/LncADeep/.
+      This is the URL linked from the RNAChallenge paper, but the datasets are also available in the GitHub repo.
+
+  lncFinder:
+    strategy: github
+    owner: HAN-Siyu
+    repo: LncFinder
+    branch: master
+    path: Data/Datasets
+    extensions: [".zip"]
+
+  CPPred:
+    strategy: direct_list
+    urls:
+      # Testing sets — ncRNA (confirmed from http://www.rnabinding.com/CPPred/)
+      - "http://www.rnabinding.com/CPPred/Human-testing/Human_coding_RNA_test.fa"
+      - "http://www.rnabinding.com/CPPred/Human-testing/Homo38_ncrna_test.fa"
+      - "http://www.rnabinding.com/CPPred/Human-testing/Human.small_coding_RNA_test.fa"
+      - "http://www.rnabinding.com/CPPred/Human-testing/Homo38.small_ncrna_test.fa"
+      - "http://www.rnabinding.com/CPPred/Mouse-testing/Mouse_coding_RNA.fa"
+      - "http://www.rnabinding.com/CPPred/Mouse-testing/Mouse_ncrna.fa"
+      - "http://www.rnabinding.com/CPPred/Mouse-testing/Mouse_small_coding_RNA.fa"
+      - "http://www.rnabinding.com/CPPred/Mouse-testing/Mouse_small_ncrna.fa"
+      - "http://www.rnabinding.com/CPPred/Zebrafish-testing/Zebrafish_coding_RNA.fa"
+      - "http://www.rnabinding.com/CPPred/Zebrafish-testing/Zebrafish_ncrna.fa"
+      - "http://www.rnabinding.com/CPPred/Zebrafish-testing/Zebrafish_small_coding_RNA.fa"
+      - "http://www.rnabinding.com/CPPred/Zebrafish-testing/Zebrafish_small_ncrna.fa"
+      - "http://www.rnabinding.com/CPPred/Fruit-fly-testing/Fruit_fly_coding_RNA.fa"
+      - "http://www.rnabinding.com/CPPred/Fruit-fly-testing/Fruit_fly_ncrna.fa"
+      - "http://www.rnabinding.com/CPPred/Fruit-fly-testing/Fruit_fly_small_coding_RNA.fa"
+      - "http://www.rnabinding.com/CPPred/Fruit-fly-testing/Fruit_fly_small_ncrna.fa"
+      - "http://www.rnabinding.com/CPPred/S.cerevisiae-testing/S.cerevisiae_coding_RNA.fa"
+      - "http://www.rnabinding.com/CPPred/S.cerevisiae-testing/S.cerevisiae_ncrna.fa"
+      - "http://www.rnabinding.com/CPPred/S.cerevisiae-testing/S.cerevisiae_small_coding_RNA.fa"
+      - "http://www.rnabinding.com/CPPred/S.cerevisiae-testing/S.cerevisiae_small_ncrna.fa"
+      - "http://www.rnabinding.com/CPPred/Integrated-testing/Integrated_coding_RNA_test.fa"
+      - "http://www.rnabinding.com/CPPred/Integrated-testing/Integrated_ncrna_test.fa"
+      - "http://www.rnabinding.com/CPPred/Integrated-testing/Integrated.small_coding_RNA_test.fa"
+      - "http://www.rnabinding.com/CPPred/Integrated-testing/Integrated.small_ncrna_test.fa"
+      # Training sets — ncRNA
+      - "http://www.rnabinding.com/CPPred/Human-training/Human.coding_RNA_training.fa"
+      - "http://www.rnabinding.com/CPPred/Human-training/Homo38.ncrna_training.fa"
+      - "http://www.rnabinding.com/CPPred/Integrated-training/Integrated.coding_RNA_training.fa"
+      - "http://www.rnabinding.com/CPPred/Integrated-training/Integrated.ncrna_training.fa"
+
+  CNIT:
+    strategy: direct_list
+    urls:
+      - "http://cnit.noncode.org/CNIT/download"
+    note: >
+      May require session/form submission. If the direct URL fails,
+      download manually and place files in resources/tool_datasets/CNIT/.
+
+  RNAplonc:
+    strategy: github
+    owner: TatianneNegri
+    repo: RNAplonc
+    branch: master
+    path: "Datasets used/test"
+    extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz"]
+
+  LGC:
+    strategy: web
+    url: "https://ngdc.cncb.ac.cn/biocode/tools/4/releases/4"
+    note: >
+      CNCB BioCode portal — download manually from
+      "https://ngdc.cncb.ac.cn/biocode/tool/BT000004"
+      and place *.fa / *.fasta files in resources/tool_datasets/LGC/.
+      Note that the original link is- "https://ngdc.cncb.ac.cn/biocode/tools/4/releases/4,"
+      but it seems inaccessible as of 2026-04-09.
+
+  RNAC:
+    strategy: github
+    owner: cbl-nabi
+    repo: RNAC
+    branch: main
+    path: DATASETS
+    extensions: [".zip"]
+
+  DeepCPP:
+    strategy: github
+    owner: yuuuuzhang
+    repo: DeepCPP
+    branch: master
+    path: rawdata
+    extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz", ".txt"]

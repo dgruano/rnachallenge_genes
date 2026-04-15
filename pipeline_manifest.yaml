@@ -1,0 +1,489 @@
+# ============================================================
+# Pipeline Manifest — rnachallenge_genes
+# ============================================================
+# Canonical record of all workflow files, their rules, and
+# their relationships.  Generated 2026-04-15 by audit-manifest.
+#
+# Files absent from the `modules` section are unreviewed
+# (either new or obsolete); absence does not imply deletion.
+# ============================================================
+
+meta:
+  project: rnachallenge_genes
+  description: >
+    RNA flanking-sequence pipeline.  Given a multi-species input FASTA
+    (RNAChallenge.fa), resolves every transcript ID to its host gene and
+    genomic coordinates across NCBI, Ensembl (BioMart), plant databases
+    (Gramene / Ensembl Plants / GTF), and NONCODE, then downloads the
+    required genome assemblies and extracts upstream/downstream flanking
+    sequences.  Final outputs are a FASTA, a BED file, and an HTML report.
+  last_updated: "2026-04-15"
+  configs:
+    main:             config/config.yaml
+    plant_gtf_sources: config/plant_gtf_sources.yaml
+    tool_sources:     config/tool_sources.yaml
+    rerun_unresolved: config/rerun_unresolved.yaml   # overlay; not loaded by default
+
+# ============================================================
+# Entry points
+# ============================================================
+entry_points:
+  main:
+    file:        Snakefile
+    config:      config/config.yaml
+    target_rule: all
+    status:      active
+    description: >
+      Main pipeline entry point.  Runs the full ID-resolution and
+      sequence-extraction DAG.
+    run_with: >
+      snakemake -s Snakefile --profile profiles/default
+
+  biomart_arabidopsis:
+    file:        workflow/rules/biomart_arabidopsis.smk
+    config:      config/config.yaml
+    target_rule: biomart_arabidopsis_table
+    status:      active_separate
+    description: >
+      Standalone diagnostic/utility Snakefile.  Lists available Ensembl
+      Plants BioMart databases and downloads the Arabidopsis thaliana
+      transcript→gene annotation table.  Not included in the main DAG;
+      run ad-hoc when investigating BioMart availability.
+    run_with: >
+      snakemake -s workflow/rules/biomart_arabidopsis.smk
+      list_biomart_plants_dbs --profile profiles/default
+
+# ============================================================
+# Include graph
+# ============================================================
+# Keys: files that contain `include:` directives.
+# Values: direct includes only (not transitive).
+include_graph:
+  Snakefile:
+    - workflow/rules/source_mapping.smk
+    - workflow/rules/parse_ids.smk
+    - workflow/rules/download_metadata.smk
+    - workflow/rules/resolve_ids.smk
+    - workflow/rules/resolve_external_ids.smk
+    - workflow/rules/biomart_plant_batch.smk
+    - workflow/rules/resolve_plant_gtf.smk
+    - workflow/rules/gramene_resolver.smk
+    - workflow/rules/detect_ensembl_species.smk
+    - workflow/rules/biomart_lookup.smk
+    - workflow/rules/join_ensembl_results.smk
+    - workflow/rules/resolve_noncode.smk
+    - workflow/rules/resolve_noncode_v4.smk
+    - workflow/rules/resolve_noncode_2016.smk
+    - workflow/rules/resolve_ncbi_genbank.smk
+    - workflow/rules/resolve_abandoned_accessions.smk
+    - workflow/rules/merge_resolved.smk
+    - workflow/rules/download_assemblies.smk
+    - workflow/rules/extract_sequences.smk
+    - workflow/rules/report.smk
+
+# ============================================================
+# Modules
+# ============================================================
+modules:
+
+  # ── Orchestrator ──────────────────────────────────────────
+  - file:   Snakefile
+    status: active
+    role:   >
+      Main orchestrator.  Loads all three configfiles, defines global
+      path variables, includes all rule modules, and declares rule `all`
+      which collects every pipeline output.
+    rules:
+      - name:   all
+        type:   orchestration
+        output: null
+
+  # ── Stage 0: Source mapping ───────────────────────────────
+  - file:   workflow/rules/source_mapping.smk
+    status: active
+    role:   >
+      Downloads FASTA files from the 15 lncRNA/mRNA classifiers listed in
+      tool_sources.yaml and cross-references every RNAChallenge transcript
+      ID against them to record which tool(s) each ID originates from.
+    rules:
+      - name:   download_tool_datasets
+        type:   data_prep
+        output: "{results_dir}/tool_datasets_manifest.json"
+      - name:   map_ids_to_tools
+        type:   processing
+        output: "{results_dir}/tool_source_map.tsv"
+
+  # ── Stage 1: ID parsing ───────────────────────────────────
+  - file:   workflow/rules/parse_ids.smk
+    status: active
+    role:   >
+      Reads the input FASTA headers, extracts transcript IDs, and
+      classifies each ID by species hint, source hint, and database route
+      (db_source) using regex pattern matching.
+    rules:
+      - name:   parse_ids
+        type:   data_prep
+        output: "{results_dir}/classified_ids.tsv"
+
+  # ── Metadata downloads ────────────────────────────────────
+  - file:   workflow/rules/download_metadata.smk
+    status: active
+    role:   >
+      Downloads per-species transcript-metadata tables from Ensembl Plants
+      BioMart for use as fast local lookup caches in resolve_external_ids.
+    rules:
+      - name:   download_metadata_table
+        type:   data_prep
+        output: "resources/metadata/{species}.tsv"
+      - name:   download_all_metadata_tables
+        type:   aggregation
+        output: "resources/metadata/.download_complete"
+
+  # ── Stage 2a: NCBI + UCSC resolution ─────────────────────
+  - file:   workflow/rules/resolve_ids.smk
+    status: active
+    role:   >
+      Resolves NCBI RefSeq and UCSC transcript IDs to gene coordinates
+      via their respective APIs.  Ensembl IDs are handled by the separate
+      BioMart sub-DAG.
+    rules:
+      - name:   resolve_ids
+        type:   processing
+        output: "{results_dir}/ncbi_ucsc_resolved.tsv"
+
+  # ── Stage 2b: External / plant resolution ────────────────
+  - file:   workflow/rules/resolve_external_ids.smk
+    status: active
+    role:   >
+      Resolves plant and WormBase transcript IDs using Ensembl REST or
+      local metadata tables (fast path).  Produces external_resolved.tsv
+      and passes external_unresolved.tsv to the BioMart batch stage.
+    rules:
+      - name:   resolve_external_ids
+        type:   processing
+        output: "{results_dir}/external_resolved.tsv"
+
+  - file:   workflow/rules/biomart_plant_batch.smk
+    status: active
+    role:   >
+      Batch-queries Ensembl Plants BioMart for plant IDs not resolved by
+      resolve_external_ids.  More efficient than REST for bulk queries.
+    rules:
+      - name:   biomart_plant_batch
+        type:   processing
+        output: "{results_dir}/biomart_resolved.tsv"
+
+  - file:   workflow/rules/resolve_plant_gtf.smk
+    status: active
+    role:   >
+      GTF-based fallback for plant IDs that BioMart could not resolve.
+      Downloads per-species GTFs from Ensembl Plants FTP and parses them
+      to extract gene/transcript annotations.
+    rules:
+      - name:   download_plant_gtf
+        type:   data_prep
+        output: "resources/plant_gtf/{species}.gtf.gz"
+      - name:   resolve_plant_gtf
+        type:   processing
+        output: "{results_dir}/plant_gtf_resolved.tsv"
+
+  - file:   workflow/rules/gramene_resolver.smk
+    status: active
+    role:   >
+      Resolves legacy plant IDs using the Gramene search API.  Third
+      fallback in the plant resolution chain after BioMart and GTF.
+    note:   >
+      BUG — output paths are hardcoded as "results/..." literals instead
+      of using the f"{RESULTS}/..." pattern.  See known_bugs.
+    rules:
+      - name:   gramene_resolver
+        type:   processing
+        output: "results/gramene_resolved.tsv"
+
+  # ── Stage 2c: Ensembl BioMart sub-DAG ────────────────────
+  - file:   workflow/rules/detect_ensembl_species.smk
+    status: active
+    role:   >
+      Checkpoint: extracts unique Ensembl transcript ID prefixes from
+      classified_ids.tsv, maps each to an Ensembl species name, and fans
+      out one biomart_lookup job per detected species.
+    rules:
+      - name:   detect_ensembl_species
+        type:   checkpoint
+        output: "{results_dir}/ensembl_species_map.tsv"
+
+  - file:   workflow/rules/biomart_lookup.smk
+    status: active
+    role:   >
+      Per-species BioMart download, gated on the detect_ensembl_species
+      checkpoint.  Downloads full annotation tables via Ensembl BioMart
+      REST API; cached with `cache: "omit-software"`.
+    rules:
+      - name:   biomart_lookup
+        type:   data_prep
+        output: "{results_dir}/biomart/{species}.tsv.gz"
+
+  - file:   workflow/rules/join_ensembl_results.smk
+    status: active
+    role:   >
+      Concatenates all per-species BioMart tables, left-joins Ensembl
+      transcript IDs against them, normalises columns to the pipeline
+      schema, and flags ambiguous transcript→gene mappings.
+    rules:
+      - name:   join_ensembl_results
+        type:   aggregation
+        output: "{results_dir}/ensembl_resolved.tsv"
+
+  # ── Stage 2d: NONCODE resolution cascade ─────────────────
+  - file:   workflow/rules/resolve_noncode.smk
+    status: active
+    role:   >
+      Primary NONCODE resolver.  Uses NONCODEv5 BED files and the
+      Transcript2Gene mapping table to resolve NONCODE transcript and
+      gene IDs to genomic coordinates.
+    rules:
+      - name:   resolve_noncode
+        type:   processing
+        output: "{results_dir}/noncode_resolved.tsv"
+
+  - file:   workflow/rules/resolve_noncode_v4.smk
+    status: active
+    role:   >
+      Fallback resolver for NONCODE IDs not found in NONCODEv5.  Uses
+      the NONCODEv4 whole-species BED archive (older assemblies, no
+      version suffixes).
+    rules:
+      - name:   resolve_noncode_v4
+        type:   processing
+        output: "{results_dir}/noncode_v4_resolved.tsv"
+
+  - file:   workflow/rules/resolve_noncode_2016.smk
+    status: active
+    role:   >
+      Third-tier NONCODE fallback.  Checks IDs against the combined
+      NONCODE2016.fa FASTA for existence only; resolved rows get NA
+      genomic coordinates.
+    rules:
+      - name:   resolve_noncode_2016
+        type:   processing
+        output: "{results_dir}/noncode_2016_resolved.tsv"
+
+  # ── Stage 2e: NCBI second / third pass ───────────────────
+  - file:   workflow/rules/resolve_ncbi_genbank.smk
+    status: active
+    role:   >
+      Second-pass resolver for NCBI IDs not resolved by resolve_ids.
+      Uses EPost→EFetch to retrieve full GenBank records (including
+      suppressed / deleted accessions) via NCBIGenBankFetcher.
+    rules:
+      - name:   resolve_ncbi_genbank
+        type:   processing
+        output: "{results_dir}/ncbi_genbank_resolved.tsv"
+
+  - file:   workflow/rules/resolve_abandoned_accessions.smk
+    status: active
+    role:   >
+      Third-pass resolver for NCBI IDs that are withdrawn or suppressed.
+      Recovers AssemblyAcc via esummary / elink, downloads the assembly
+      GTF from NCBI FTP, and extracts gene/transcript annotations.
+    rules:
+      - name:   resolve_abandoned_accessions
+        type:   processing
+        output: "{results_dir}/abandoned_resolved.tsv"
+
+  # ── Stage 3: Merge ────────────────────────────────────────
+  - file:   workflow/rules/merge_resolved.smk
+    status: active
+    role:   >
+      Concatenates all resolution streams (NCBI/UCSC, Ensembl, external,
+      BioMart plant, Gramene, plant GTF, NONCODE v5/v4/2016, abandoned)
+      into a single resolved_ids.tsv; produces ambiguous and unresolved
+      summary files.
+    rules:
+      - name:   merge_resolved
+        type:   aggregation
+        output: "{results_dir}/resolved_ids.tsv"
+
+  # ── Stage 4: Assembly downloads ───────────────────────────
+  - file:   workflow/rules/download_assemblies.smk
+    status: active
+    role:   >
+      Checkpoint: reads resolved_ids.tsv to identify unique
+      (organism, assembly_accession) pairs, then downloads + indexes
+      genome FASTAs (NCBI GCF/GCA or Ensembl FTP).  Cache under
+      resources/cache/<accession>/.
+    rules:
+      - name:   download_assemblies
+        type:   checkpoint
+        output: "{results_dir}/.assemblies_ready"
+
+  # ── Stage 5: Sequence extraction ─────────────────────────
+  - file:   workflow/rules/extract_sequences.smk
+    status: active
+    role:   >
+      Extracts strand-aware, flank-extended gene sequences for every
+      resolved transcript using samtools faidx against cached assemblies.
+      Produces the final FASTA and BED outputs.
+    rules:
+      - name:   extract_sequences
+        type:   processing
+        output: "{results_dir}/output.fasta"
+
+  # ── Stage 6: Report ───────────────────────────────────────
+  - file:   workflow/rules/report.smk
+    status: active
+    role:   >
+      Generates an HTML summary report covering classification stats,
+      resolution rates by database, ambiguous/unresolved counts, and
+      benchmark runtimes.
+    rules:
+      - name:   report
+        type:   analysis
+        output: "{results_dir}/report.html"
+
+  # ── Standalone / diagnostic ───────────────────────────────
+  - file:   workflow/rules/biomart_arabidopsis.smk
+    status: active_separate
+    role:   >
+      Standalone diagnostic Snakefile (not included in the main DAG).
+      Lists available Ensembl Plants BioMart databases and downloads the
+      Arabidopsis thaliana annotation table via a custom Python script.
+    note:   >
+      Defines RESULTS and LOGS but not BENCHMARKS; the
+      biomart_arabidopsis_table rule references f"{BENCHMARKS}/..." which
+      will raise a NameError when run standalone.  See known_bugs.
+    rules:
+      - name:   list_biomart_plants_dbs
+        type:   setup
+        output: "{results_dir}/biomart_plants_available_dbs.txt"
+      - name:   biomart_arabidopsis_table
+        type:   data_prep
+        output: "{results_dir}/biomart/arabidopsis_thaliana.tsv.gz"
+
+  # ── Deprecated ────────────────────────────────────────────
+  - file:   workflow/rules/download_id_mappings.smk
+    status: deprecated
+    role:   >
+      Downloads legacy ID mapping files for Rice (MSU) and Maize (GRMZM).
+      Not included in the main Snakefile and has no callers; superseded
+      by the BioMart and GTF resolution paths.
+    rules:
+      - name:   download_id_mappings
+        type:   data_prep
+        output: "resources/id_mappings/.download_complete"
+
+# ============================================================
+# Analysis flow
+# ============================================================
+analysis_flow: |
+  Stage 0 — Tool source mapping
+    download_tool_datasets  →  tool_datasets_manifest.json
+    map_ids_to_tools        →  tool_source_map.tsv / tool_source_stats.tsv
+
+  Stage 1 — ID parsing
+    parse_ids               →  classified_ids.tsv  (routes each ID to a db_source)
+                               unknown_ids.tsv
+
+  Stage 2 — Parallel ID resolution (all consume classified_ids.tsv)
+    2a. NCBI / UCSC stream:
+          resolve_ids              →  ncbi_ucsc_resolved.tsv
+          resolve_ncbi_genbank     →  ncbi_genbank_resolved.tsv      (2nd pass)
+          resolve_abandoned_accessions → abandoned_resolved.tsv      (3rd pass)
+
+    2b. Ensembl stream (checkpoint fan-out):
+          detect_ensembl_species [checkpoint]  →  ensembl_species_map.tsv
+          biomart_lookup (×N species)          →  biomart/{species}.tsv.gz
+          join_ensembl_results                 →  ensembl_resolved.tsv
+
+    2c. Plant / external stream:
+          resolve_external_ids   →  external_resolved.tsv
+          biomart_plant_batch    →  biomart_resolved.tsv        (bulk BioMart)
+          resolve_plant_gtf      →  plant_gtf_resolved.tsv      (GTF fallback)
+          gramene_resolver       →  gramene_resolved.tsv         (API fallback)
+
+    2d. NONCODE stream:
+          resolve_noncode        →  noncode_resolved.tsv         (v5 primary)
+          resolve_noncode_v4     →  noncode_v4_resolved.tsv      (v4 fallback)
+          resolve_noncode_2016   →  noncode_2016_resolved.tsv    (2016 fallback)
+
+  Stage 3 — Merge
+    merge_resolved  →  resolved_ids.tsv / ambiguous.tsv / unresolved.tsv
+                       pattern_unmatched.tsv / matched_not_found.tsv
+
+  Stage 4 — Assembly download (checkpoint fan-out)
+    download_assemblies [checkpoint]  →  resources/cache/<accession>/genome.fasta
+
+  Stage 5 — Sequence extraction
+    extract_sequences  →  output.fasta / output.bed
+
+  Stage 6 — Report
+    report             →  report.html
+
+# ============================================================
+# Utility locations
+# ============================================================
+utility_locations:
+  - path:   workflow/scripts/logging_utils.py
+    note:   >
+      Shared logging helpers (e.g. get_logger, elapsed_time).
+      Imported by most scripts; not called via a Snakemake script: directive.
+
+  - path:   workflow/scripts/ncbi_genbank_fetcher.py
+    symbol: NCBIGenBankFetcher
+    note:   >
+      NCBI EPost→EFetch client that retrieves full GenBank records for
+      suppressed or withdrawn accessions.  Imported by resolve_ncbi_genbank.py.
+
+  - path:   workflow/scripts/count_id_presence.py
+    note:   >
+      Standalone diagnostic script.  Reports how many input IDs are
+      present in each resolution output file.  Not called by any rule.
+
+# ============================================================
+# Wildcards
+# ============================================================
+wildcards:
+  species: >
+    Ensembl species name (snake_case, e.g. homo_sapiens, arabidopsis_thaliana)
+    used for per-species BioMart table downloads, metadata caches, and
+    plant GTF downloads.
+  results_dir: >
+    Top-level results directory; bound to config["results_dir"] in the
+    Snakefile (default: "results").  Not a Snakemake wildcard — used here
+    only as a placeholder to show that output paths vary with config.
+
+# ============================================================
+# Audit findings
+# ============================================================
+audit_findings:
+  outside_main_flow:
+    - workflow/rules/biomart_arabidopsis.smk   # active_separate; diagnostic use only
+    - workflow/rules/download_id_mappings.smk  # deprecated; no callers
+
+# ============================================================
+# Known bugs
+# ============================================================
+known_bugs:
+  - file:        workflow/rules/gramene_resolver.smk
+    rule:        gramene_resolver
+    description: >
+      Output paths are hardcoded as bare string literals
+      ("results/gramene_resolved.tsv", "results/gramene_unresolved.tsv",
+      "logs/gramene_resolver.log", "benchmarks/gramene_resolver.tsv")
+      instead of the f"{RESULTS}/..." f-string pattern used everywhere else.
+      If config["results_dir"] is changed, gramene output will still land
+      under "results/" and merge_resolved will fail to find the files.
+    workaround: >
+      Ensure results_dir is set to "results" in config.yaml (current
+      default).  Fix by replacing bare strings with f"{RESULTS}/..." etc.
+
+  - file:        workflow/rules/biomart_arabidopsis.smk
+    rule:        biomart_arabidopsis_table
+    description: >
+      The rule references f"{BENCHMARKS}/biomart_arabidopsis_table.tsv"
+      but BENCHMARKS is never defined in this standalone file (only RESULTS
+      and LOGS are defined).  Running this rule standalone will raise a
+      NameError.
+    workaround: >
+      Add `BENCHMARKS = config.get("benchmarks_dir", "benchmarks")` at
+      the top of the file alongside the existing RESULTS / LOGS definitions.

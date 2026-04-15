@@ -34,6 +34,7 @@ rule join_ensembl_results:
     output:
         resolved  = f"{RESULTS}/ensembl_resolved.tsv",
         ambiguous = f"{RESULTS}/ensembl_ambiguous.tsv",
+        unresolved = f"{RESULTS}/ensembl_unresolved.tsv",
     log:
         f"{LOGS}/join_ensembl_results.log",
     benchmark:

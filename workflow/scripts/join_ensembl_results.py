@@ -38,6 +38,7 @@ input_species_map = snakemake.input.species_map
 biomart_tables = snakemake.input.biomart_tables  # list of per-species .tsv.gz
 out_resolved = snakemake.output.resolved
 out_ambiguous = snakemake.output.ambiguous
+out_unresolved = snakemake.output.unresolved
 cfg = snakemake.config
 
 # ── Unified output columns (same schema as NCBI/UCSC resolver) ─
@@ -67,6 +68,7 @@ AMBIG_COLS = [
     "end",
     "strand",
 ]
+UNRESOLVED_COLS = ["transcript_id", "db_source", "reason"]
 
 log.info("join_ensembl_results: joining BioMart tables against Ensembl transcript IDs")
 
@@ -105,6 +107,7 @@ if not biomart_dfs:
     log.error("No BioMart tables loaded — writing empty outputs")
     pd.DataFrame(columns=RESOLVED_COLS).to_csv(out_resolved, sep="\t", index=False)
     pd.DataFrame(columns=AMBIG_COLS).to_csv(out_ambiguous, sep="\t", index=False)
+    pd.DataFrame(columns=UNRESOLVED_COLS).to_csv(out_unresolved, sep="\t", index=False)
     sys.exit(0)
 
 df_biomart = pd.concat(biomart_dfs, ignore_index=True)
@@ -235,9 +238,14 @@ for _, row in df_ensembl_ids.iterrows():
 
 df_resolved = pd.DataFrame(resolved_rows, columns=RESOLVED_COLS)
 df_ambig = pd.DataFrame(ambig_rows, columns=AMBIG_COLS)
+df_unresolved = pd.DataFrame(
+    [{"transcript_id": tid, "db_source": "ensembl", "reason": "not_found_in_ensembl_biomart"} for tid in missing],
+    columns=UNRESOLVED_COLS,
+)
 
 df_resolved.to_csv(out_resolved, sep="\t", index=False)
 df_ambig.to_csv(out_ambiguous, sep="\t", index=False)
+df_unresolved.to_csv(out_unresolved, sep="\t", index=False)
 
 # ── Summary ──────────────────────────────────────────────────
 log.info("=" * 60)

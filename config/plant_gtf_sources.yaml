@@ -1,0 +1,48 @@
+# ============================================================
+# Plant GTF/GFF fallback sources
+# ============================================================
+# Used by the resolve_plant_gtf rule when BioMart fails to
+# resolve a transcript ID.  Each entry specifies:
+#
+#   url            — direct download URL for the gzipped GTF/GFF
+#   assembly_name  — genome assembly name (reported in output)
+#   release        — Ensembl Plants release number (informational)
+#
+# The pipeline downloads each file once into
+# resources/plant_gtf/{species}.gtf.gz and caches it.
+#
+# Remove or comment out species you don't need to speed up the
+# initial download step.
+# ============================================================
+
+plant_gtf_sources:
+
+  arabidopsis_thaliana:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.60.gtf.gz"
+    assembly_name: "TAIR10"
+    release: "60"
+
+  oryza_sativa:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/oryza_sativa/Oryza_sativa.IRGSP-1.0.60.gtf.gz"
+    assembly_name: "IRGSP-1.0"
+    release: "60"
+
+  zea_mays:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/zea_mays/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.60.gtf.gz"
+    assembly_name: "Zm-B73-REFERENCE-NAM-5.0"
+    release: "60"
+
+  solanum_lycopersicum:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/solanum_lycopersicum/Solanum_lycopersicum.SL3.0.60.gtf.gz"
+    assembly_name: "SL3.0"
+    release: "60"
+
+  glycine_max:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/glycine_max/Glycine_max.Glycine_max_v2.1.60.gtf.gz"
+    assembly_name: "Glycine_max_v2.1"
+    release: "60"
+
+  solanum_tuberosum:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/solanum_tuberosum/Solanum_tuberosum.SolTub_3.0.60.gtf.gz"
+    assembly_name: "SolTub_3.0"
+    release: "60"
