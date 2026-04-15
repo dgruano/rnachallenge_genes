@@ -18,10 +18,12 @@ rule resolve_ids:
     output:
         resolved  = f"{RESULTS}/ncbi_ucsc_resolved.tsv",
         ambiguous = f"{RESULTS}/ncbi_ucsc_ambiguous.tsv",
+        unresolved = f"{RESULTS}/ncbi_ucsc_unresolved.tsv",
     log:
         f"{LOGS}/resolve_ids.log",
     benchmark:
         f"{BENCHMARKS}/resolve_ids.tsv",
+    threads: 2
     resources:
         slurm_partition = "compute",
         runtime         = 120,

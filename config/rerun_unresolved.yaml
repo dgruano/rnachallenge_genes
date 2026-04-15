@@ -1,0 +1,14 @@
+# ============================================================
+# Rerun Configuration: Process Previously Unresolved IDs
+# ============================================================
+# Use this config to reprocess only the IDs that failed to resolve
+# in a previous run. Combine with main config:
+#   snakemake --configfile config/config.yaml --configfile config/rerun_unresolved.yaml ...
+# ============================================================
+
+# Point to the unresolved TSV from a previous run
+# The script will filter to only these IDs instead of processing all classified IDs
+external_unresolved_input: "backup/external_unresolved.tsv"
+
+# Optional: Override output names to avoid overwriting original results
+# results_suffix: "_rerun"

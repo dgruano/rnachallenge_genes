@@ -1,13 +1,18 @@
 # ============================================================
 # Rule: parse_ids
 # ============================================================
-# Stage 1 — Parse & Classify Transcript IDs
+# Stage 1 — Species-First Transcript Routing
 #
 # Reads input FASTA file(s), extracts transcript IDs from headers,
-# and classifies each ID into one of: ncbi | ensembl | ucsc | unknown.
+# and classifies each ID into:
+#   - species_hint
+#   - source_hint
+#   - database route (db_source)
+# using regex pattern matching on transcript names.
 #
 # Outputs:
-#   - classified_ids.tsv: transcript_id, db_source, raw_header, source_file
+#   - classified_ids.tsv: transcript_id, db_source, species_hint, source_hint,
+#                         assembly_hint, raw_header, source_file
 #   - unknown_ids.tsv:    transcript_id, raw_header, source_file, reason
 # ============================================================
 

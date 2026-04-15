@@ -43,6 +43,25 @@ max_retries: 3
 retry_wait_seconds: 5
 ncbi_batch_size: 50
 
+# --- External ID resolution ---
+# Use common Ensembl REST endpoint for all species (plants subdomain is frequently down).
+ensembl_rest_base: "https://rest.ensembl.org"
+# Set to true to skip ALL REST calls (use metadata tables only)
+skip_rest_lookups: false
+# Skip REST for plant IDs only (use metadata) while allowing REST for non-plant species
+skip_rest_for_plants: true
+
+# Optional per-species metadata tables (tab-separated) for fast local lookup.
+# Columns required:
+#   transcript_id, gene_id, gene_symbol, assembly_accession, chrom, start, end, strand
+# Will be downloaded automatically via BioMart if not present
+external_metadata_tables:
+  arabidopsis_thaliana: "resources/metadata/arabidopsis_thaliana.tsv"
+  oryza_sativa: "resources/metadata/oryza_sativa.tsv"
+  zea_mays: "resources/metadata/zea_mays.tsv"
+  solanum_lycopersicum: "resources/metadata/solanum_lycopersicum.tsv"
+  glycine_max: "resources/metadata/glycine_max.tsv"
+
 # --- Output ---
 results_dir: "results"
 logs_dir: "logs"

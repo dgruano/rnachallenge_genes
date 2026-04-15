@@ -18,6 +18,8 @@ rule report:
                 "detect_ensembl_species",
                 "resolve_ids",
                 "resolve_external_ids",
+                "biomart_plant_batch",
+                "gramene_resolver",
                 "join_ensembl_results",
                 "merge_resolved",
                 "download_assemblies",
