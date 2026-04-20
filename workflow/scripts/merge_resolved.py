@@ -28,6 +28,12 @@ in_ensembl_res = snakemake.input.ensembl_resolved
 in_external_res = snakemake.input.external_resolved
 in_biomart_res = snakemake.input.biomart_resolved
 in_plant_gtf_res = snakemake.input.plant_gtf_resolved
+in_worm_gtf_res = snakemake.input.worm_gtf_resolved
+in_worm_gtf_unres = snakemake.input.worm_gtf_unresolved
+in_fly_gtf_res = snakemake.input.fly_gtf_resolved
+in_fly_gtf_unres = snakemake.input.fly_gtf_unresolved
+in_yeast_gtf_res = snakemake.input.yeast_gtf_resolved
+in_yeast_gtf_unres = snakemake.input.yeast_gtf_unresolved
 in_gramene_res = snakemake.input.gramene_resolved
 in_noncode_res = snakemake.input.noncode_resolved
 in_noncode_v4_res = snakemake.input.noncode_v4_resolved
@@ -51,6 +57,20 @@ out_not_found = snakemake.output.not_found
 
 log.info("merge_resolved: combining RefSeq/Ensembl/plant resolution outputs")
 
+RESOLVED_BASE_COLS = [
+    "transcript_id",
+    "db_source",
+    "gene_id",
+    "gene_symbol",
+    "organism",
+    "assembly_accession",
+    "chrom",
+    "start",
+    "end",
+    "strand",
+    "is_ambiguous",
+]
+
 
 # ── Load all parts ────────────────────────────────────────────
 def safe_read(path: str, label: str) -> pd.DataFrame:
@@ -63,12 +83,59 @@ def safe_read(path: str, label: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def normalize_resolved_frame(
+    frame: pd.DataFrame, label: str, *, defaults: dict | None = None
+) -> pd.DataFrame:
+    """
+    Coerce resolver-specific resolved outputs into the canonical schema.
+
+    This keeps merge_resolved tolerant of fallback resolvers, including the
+    yeast transcript/GFF path, that may emit transcript-centric column names.
+    """
+    if frame.empty:
+        return frame
+
+    normalized = frame.copy()
+    rename_map = {
+        "gene_name": "gene_symbol",
+        "assembly_name": "assembly_accession",
+        "seqid": "chrom",
+    }
+    normalized = normalized.rename(
+        columns={src: dst for src, dst in rename_map.items() if src in normalized.columns}
+    )
+
+    if defaults:
+        for col, val in defaults.items():
+            if col not in normalized.columns:
+                normalized[col] = val
+
+    missing = [col for col in RESOLVED_BASE_COLS if col not in normalized.columns]
+    if missing:
+        log.warning(
+            f"  {label} missing resolved columns {missing}; filling with NA defaults"
+        )
+        for col in missing:
+            if col == "is_ambiguous":
+                normalized[col] = False
+            else:
+                normalized[col] = pd.NA
+
+    return normalized
+
+
 df_ncbi_ucsc = safe_read(in_ncbi_ucsc_res, "ncbi_ucsc_resolved")
 df_ensembl = safe_read(in_ensembl_res, "ensembl_resolved")
 df_external = safe_read(in_external_res, "external_resolved")
 df_biomart    = safe_read(in_biomart_res,    "biomart_resolved")
-df_plant_gtf  = safe_read(in_plant_gtf_res, "plant_gtf_resolved")
-df_gramene    = safe_read(in_gramene_res,   "gramene_resolved")
+df_plant_gtf  = safe_read(in_plant_gtf_res,  "plant_gtf_resolved")
+df_worm_gtf   = safe_read(in_worm_gtf_res,   "worm_gtf_resolved")
+df_worm_gtf_unres = safe_read(in_worm_gtf_unres, "worm_gtf_unresolved")
+df_fly_gtf    = safe_read(in_fly_gtf_res,    "fly_gtf_resolved")
+df_fly_gtf_unres = safe_read(in_fly_gtf_unres, "fly_gtf_unresolved")
+df_yeast_gtf  = safe_read(in_yeast_gtf_res,  "yeast_gtf_resolved")
+df_yeast_gtf_unres = safe_read(in_yeast_gtf_unres, "yeast_gtf_unresolved")
+df_gramene    = safe_read(in_gramene_res,    "gramene_resolved")
 df_noncode = safe_read(in_noncode_res, "noncode_resolved")
 df_noncode_v4 = safe_read(in_noncode_v4_res, "noncode_v4_resolved")
 df_noncode_2016 = safe_read(in_noncode_2016_res, "noncode_2016_resolved")
@@ -84,9 +151,35 @@ df_noncode_v4_unres = safe_read(in_noncode_v4_unres, "noncode_v4_unresolved")
 df_noncode_2016_unres = safe_read(in_noncode_2016_unres, "noncode_2016_unresolved")
 df_noncode_unres = df_noncode_2016_unres  # final unresolved after all fallbacks
 
+df_ncbi_ucsc = normalize_resolved_frame(df_ncbi_ucsc, "ncbi_ucsc_resolved")
+df_ensembl = normalize_resolved_frame(df_ensembl, "ensembl_resolved")
+df_external = normalize_resolved_frame(df_external, "external_resolved")
+df_biomart = normalize_resolved_frame(df_biomart, "biomart_resolved")
+df_plant_gtf = normalize_resolved_frame(df_plant_gtf, "plant_gtf_resolved")
+df_worm_gtf = normalize_resolved_frame(
+    df_worm_gtf,
+    "worm_gtf_resolved",
+    defaults={"db_source": "wormbase", "organism": "caenorhabditis_elegans"},
+)
+df_fly_gtf = normalize_resolved_frame(
+    df_fly_gtf,
+    "fly_gtf_resolved",
+    defaults={"db_source": "flybase", "organism": "drosophila_melanogaster"},
+)
+df_yeast_gtf = normalize_resolved_frame(
+    df_yeast_gtf,
+    "yeast_gtf_resolved",
+    defaults={"db_source": "sgd", "organism": "saccharomyces_cerevisiae"},
+)
+df_gramene = normalize_resolved_frame(df_gramene, "gramene_resolved")
+df_noncode = normalize_resolved_frame(df_noncode, "noncode_resolved")
+df_noncode_v4 = normalize_resolved_frame(df_noncode_v4, "noncode_v4_resolved")
+df_noncode_2016 = normalize_resolved_frame(df_noncode_2016, "noncode_2016_resolved")
+df_abandoned = normalize_resolved_frame(df_abandoned, "abandoned_resolved")
+
 # ── Concatenate ───────────────────────────────────────────────
 df_all_resolved = pd.concat(
-    [df_ncbi_ucsc, df_ensembl, df_external, df_biomart, df_plant_gtf, df_gramene, df_noncode, df_noncode_v4, df_noncode_2016, df_abandoned],
+    [df_ncbi_ucsc, df_ensembl, df_external, df_biomart, df_plant_gtf, df_worm_gtf, df_fly_gtf, df_yeast_gtf, df_gramene, df_noncode, df_noncode_v4, df_noncode_2016, df_abandoned],
     ignore_index=True,
 )
 df_all_ambig = pd.concat([df_amb_nu, df_amb_ens, df_amb_ext], ignore_index=True)
@@ -94,7 +187,7 @@ df_pattern_unmatched = df_unknown.copy()
 
 # Normalize matched-not-found columns across resolvers
 normalized_not_found = []
-for frame in (df_nu_unres, df_ens_unres, df_gram_unres, df_noncode_unres):
+for frame in (df_nu_unres, df_ens_unres, df_gram_unres, df_worm_gtf_unres, df_fly_gtf_unres, df_yeast_gtf_unres, df_noncode_unres):
     if frame.empty:
         continue
     cols = set(frame.columns)
@@ -141,6 +234,9 @@ log.info(f"Ensembl resolved     : {len(df_ensembl)}")
 log.info(f"External resolved    : {len(df_external)}")
 log.info(f"BioMart resolved     : {len(df_biomart)}")
 log.info(f"Plant GTF resolved   : {len(df_plant_gtf)}")
+log.info(f"Worm GTF resolved    : {len(df_worm_gtf)}")
+log.info(f"Fly GTF resolved     : {len(df_fly_gtf)}")
+log.info(f"Yeast GTF resolved   : {len(df_yeast_gtf)}")
 log.info(f"Gramene resolved     : {len(df_gramene)}")
 log.info(f"NONCODE resolved     : {len(df_noncode)}")
 log.info(f"NONCODEv4 resolved   : {len(df_noncode_v4)}")

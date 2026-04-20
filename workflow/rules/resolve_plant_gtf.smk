@@ -9,7 +9,7 @@
 # top-level "configfile:" directive in the Snakefile).
 #
 # Chain:
-#   biomart_plant_batch → biomart_unresolved.tsv
+#   parse_ids           → classified_ids.tsv
 #           ↓
 #   resolve_plant_gtf   → plant_gtf_resolved.tsv
 #                         plant_gtf_unresolved.tsv
@@ -25,7 +25,7 @@ _PLANT_GTF_SOURCES = config.get("plant_gtf_sources", {})
 rule download_plant_gtf:
     """Download a single species GTF from Ensembl Plants FTP."""
     output:
-        protected("resources/plant_gtf/{species}.gtf.gz"),
+        "resources/plant_gtf/{species}.gtf.gz",
     params:
         url = lambda wc: _PLANT_GTF_SOURCES[wc.species]["url"],
     log:
@@ -47,7 +47,7 @@ def _plant_gtf_inputs(wildcards):
     """Collect all configured GTF files as named inputs."""
     species_list = list(_PLANT_GTF_SOURCES.keys())
     return {
-        "unresolved": f"{RESULTS}/biomart_unresolved.tsv",
+        "classified": f"{RESULTS}/classified_ids.tsv",
         "gtf_files": expand(
             "resources/plant_gtf/{species}.gtf.gz",
             species=species_list,

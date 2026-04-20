@@ -1,0 +1,36 @@
+# ============================================================
+# Metazoa GTF/GFF direct resolver sources
+# ============================================================
+# Used by the direct worm and fly annotation resolvers.
+# Each entry specifies:
+#
+#   url            — direct download URL for the gzipped GTF/GFF
+#   assembly_name  — genome assembly name reported in output
+#   release        — source release number (informational)
+# ============================================================
+
+metazoa_gtf_sources:
+  wormbase:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-30/gtf/caenorhabditis_elegans/Caenorhabditis_elegans.WBcel235.30.gtf.gz"
+    assembly_name: "WBcel235"
+    release: "30"
+    organism: "caenorhabditis_elegans"
+
+
+  wormbase_60:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-60/gtf/caenorhabditis_elegans/Caenorhabditis_elegans.WBcel235.60.gtf.gz"
+    assembly_name: "WBcel235"
+    release: "60"
+    organism: "caenorhabditis_elegans"
+    comment: >
+      Release 60 had 25/112 unresolved transcripts.
+      Looking at tool_source_map.tsv, we can see how several unresolved transcripts were present in all tools,
+      for instance, B0244.11 is present in CPC2,CPPred,LGC,RNAC but absent in the release 60.
+      I will now check the oldest release used by any of these tools.
+
+
+  flybase:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-60/gtf/drosophila_melanogaster/Drosophila_melanogaster.BDGP6.46.60.gtf.gz"
+    assembly_name: "BDGP6"
+    release: "60"
+    organism: "drosophila_melanogaster"

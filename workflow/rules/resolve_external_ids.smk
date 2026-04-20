@@ -2,8 +2,8 @@
 # Rule: resolve_external_ids
 # ============================================================
 # Resolves non-NCBI/Ensembl/UCSC transcript IDs currently
-# classified as "plant" or "wormbase". Uses Ensembl REST for
-# plant IDs and parses WormBase-encoded headers when available.
+# classified as "plant". WormBase, FlyBase, and SGD IDs are handled
+# by direct annotation resolvers in separate rules.
 # Can use local metadata tables for faster resolution.
 # ============================================================
 
