@@ -1,8 +1,9 @@
 """
 scripts/resolve_plant_gtf.py
-GTF-based fallback resolver for unresolved plant transcript IDs
-===============================================================
-Runs after biomart_plant_batch fails to resolve an ID.
+GTF-based resolver for plant transcript IDs
+============================================
+Consumes all classified plant IDs directly from classified_ids.tsv
+rather than waiting for a BioMart step to emit them as unresolved.
 
 For each species that has a GTF configured in plant_gtf_sources.yaml,
 the script:
@@ -29,8 +30,8 @@ from logging_utils import get_logger
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("resolve_plant_gtf", snakemake.log[0])
 
-input_tsv      = snakemake.input.unresolved
-gtf_files      = snakemake.input.gtf_files        # list[str], one per species
+input_tsv      = snakemake.input.classified        # classified_ids.tsv
+gtf_files      = snakemake.input.gtf_files         # list[str], one per species
 out_resolved   = snakemake.output.resolved
 out_unresolved = snakemake.output.unresolved
 
@@ -185,15 +186,16 @@ def build_gtf_index(gtf_path: str) -> Dict[str, dict]:
 
 
 # ── Main ─────────────────────────────────────────────────────
-log.info("Starting GTF-based fallback resolution for plant transcripts")
+log.info("Loading classified plant IDs from classified_ids.tsv")
 
-df = pd.read_csv(input_tsv, sep="\t")
-log.info(f"Loaded {len(df)} unresolved IDs from {input_tsv}")
+classified_df = pd.read_csv(input_tsv, sep="\t")
+df = classified_df[classified_df["db_source"].astype(str) == "plant"].copy()
+log.info(f"Plant IDs to resolve via GTF: {len(df)}")
 
 if df.empty or not GTF_SOURCES:
     log.info("Nothing to resolve — writing empty outputs")
     pd.DataFrame(columns=RESOLVED_COLS).to_csv(out_resolved,   sep="\t", index=False)
-    df.reindex(columns=UNRESOLVED_COLS).to_csv(out_unresolved, sep="\t", index=False)
+    pd.DataFrame(columns=UNRESOLVED_COLS).to_csv(out_unresolved, sep="\t", index=False)
     sys.exit(0)
 
 # Lazy-load GTF indices: only parse files for species that appear in the input

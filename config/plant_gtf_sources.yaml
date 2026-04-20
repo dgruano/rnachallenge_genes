@@ -32,10 +32,18 @@ plant_gtf_sources:
     assembly_name: "Zm-B73-REFERENCE-NAM-5.0"
     release: "60"
 
-  solanum_lycopersicum:
+  solanum_lycopersicum_cnit:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/solanum_lycopersicum/Solanum_lycopersicum.SL3.0.60.gtf.gz"
     assembly_name: "SL3.0"
     release: "60"
+
+  solanum_lycopersicum:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-30/gtf/solanum_lycopersicum/Solanum_lycopersicum.GCA_000188115.2.30.gtf.gz"
+    release: "30"
+    assembly_name: "GCA_000188115.2"
+    notes: >
+      LGC used Ensembl version 30
+
 
   glycine_max:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/glycine_max/Glycine_max.Glycine_max_v2.1.60.gtf.gz"

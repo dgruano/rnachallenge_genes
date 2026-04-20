@@ -8,8 +8,11 @@
 # Inputs:
 #   ncbi_ucsc_resolved   — from resolve_ids
 #   ensembl_resolved     — from join_ensembl_results
-#   external_resolved    — from resolve_external_ids
+#   external_resolved    — from resolve_external_ids (plant)
 #   biomart_resolved     — from biomart_plant_batch
+#   worm_gtf_resolved    — from resolve_worm_gtf
+#   fly_gtf_resolved     — from resolve_fly_gtf
+#   yeast_gtf_resolved   — from resolve_yeast_gtf (SGD transcript fallback)
 #   gramene_resolved     — from gramene_resolver
 #
 # Outputs include explicit unresolved classes:
@@ -24,6 +27,12 @@ rule merge_resolved:
         external_resolved     = f"{RESULTS}/external_resolved.tsv",
         biomart_resolved      = f"{RESULTS}/biomart_resolved.tsv",
         plant_gtf_resolved    = f"{RESULTS}/plant_gtf_resolved.tsv",
+        worm_gtf_resolved     = f"{RESULTS}/worm_gtf_resolved.tsv",
+        worm_gtf_unresolved   = f"{RESULTS}/worm_gtf_unresolved.tsv",
+        fly_gtf_resolved      = f"{RESULTS}/fly_gtf_resolved.tsv",
+        fly_gtf_unresolved    = f"{RESULTS}/fly_gtf_unresolved.tsv",
+        yeast_gtf_resolved    = f"{RESULTS}/yeast_gtf_resolved.tsv",
+        yeast_gtf_unresolved  = f"{RESULTS}/yeast_gtf_unresolved.tsv",
         gramene_resolved      = f"{RESULTS}/gramene_resolved.tsv",
         noncode_resolved      = f"{RESULTS}/noncode_resolved.tsv",
         noncode_v4_resolved   = f"{RESULTS}/noncode_v4_resolved.tsv",

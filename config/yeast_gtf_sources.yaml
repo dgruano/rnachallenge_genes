@@ -1,0 +1,24 @@
+# ============================================================
+# Yeast (SGD) GFF3 annotation source
+# ============================================================
+# Used by the resolve_yeast_gtf rule to resolve SGD gene IDs
+# that resolve_external_ids could not resolve via Ensembl REST.
+#
+# The file is downloaded once into:
+#   resources/yeast_gtf/saccharomyces_cerevisiae.gff.gz
+#
+# To upgrade to a newer SGD release, update `url` and `release`
+# to the desired version string (format: R<major>-<minor>-<patch>_<date>).
+# Check https://downloads.yeastgenome.org/curation/chromosomal_feature/
+# for available releases.
+#
+# assembly_name is reported verbatim in the output TSV as
+# `assembly_accession` so downstream assembly download rules can
+# identify the genome.
+# ============================================================
+
+yeast_gtf_sources:
+  saccharomyces_cerevisiae:
+    url: "http://sgd-archive.yeastgenome.org/curation/chromosomal_feature/saccharomyces_cerevisiae.gff.gz"
+    assembly_name: "R64-5-1"
+    release: "R64-5-1_20231010"
