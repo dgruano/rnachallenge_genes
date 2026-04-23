@@ -28,10 +28,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
 
 # ── Snakemake interface ──────────────────────────────────────────────────────
-log = get_logger("resolve_ensembl_assembly_accessions", snakemake.log[0])
-input_resolved = snakemake.input.resolved
-out_resolved = snakemake.output.resolved
-out_unresolved = snakemake.output.unresolved
+# Only initialize snakemake variables when running under Snakemake
+if 'snakemake' in globals():
+    log = get_logger("resolve_ensembl_assembly_accessions", snakemake.log[0])
+    input_resolved = snakemake.input.resolved
+    out_resolved = snakemake.output.resolved
+    out_unresolved = snakemake.output.unresolved
 
 # ── Hardcoded GRC* → GCF_/GCA_ mapping ───────────────────────────────────────
 ASSEMBLY_NAME_MAPPING = {
@@ -94,68 +96,109 @@ def map_grc_to_gcf(assembly_name: str) -> Optional[str]:
     return ASSEMBLY_NAME_MAPPING.get(normalized)
 
 
+def filter_and_resolve_ensembl(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Filter Ensembl rows with GRC* assembly names and attempt mapping.
+
+    Args:
+        df: Input dataframe with ensembl_resolved data
+
+    Returns:
+        Tuple of (resolved_df, unresolved_df)
+    """
+    if df.empty:
+        return df.copy(), pd.DataFrame()
+
+    resolved_rows = []
+    unresolved_rows = []
+
+    for idx, row in df.iterrows():
+        assembly_val = row.get("assembly_accession")
+
+        # If not a GRC* accession, pass through unchanged (for resolved)
+        if not is_grc_assembly_accession(assembly_val):
+            resolved_rows.append(row.to_dict())
+            continue
+
+        # Try to map GRC* to GCF_
+        mapped = map_grc_to_gcf(str(assembly_val))
+        if mapped:
+            row_dict = row.to_dict()
+            row_dict["assembly_accession"] = mapped
+            resolved_rows.append(row_dict)
+        else:
+            # Could not map - goes to unresolved
+            unresolved_rows.append({
+                "transcript_id": row.get("transcript_id"),
+                "db_source": row.get("db_source", "ensembl"),
+                "reason": f"grc_mapping_failed:{assembly_val}",
+            })
+
+    resolved = pd.DataFrame(resolved_rows) if resolved_rows else pd.DataFrame()
+    unresolved = pd.DataFrame(unresolved_rows) if unresolved_rows else pd.DataFrame()
+
+    return resolved, unresolved
+
+
 # ── Main processing ────────────────────────────────────────────────────────
-log.info("Stage 2d: Resolving Ensembl assembly accessions")
+# Only run when executed by Snakemake
+if 'snakemake' in globals():
+    log.info("Stage 2d: Resolving Ensembl assembly accessions")
 
-df = pd.read_csv(input_resolved, sep="\t", dtype={"chrom": "object"})
-log.info(f"Loaded {len(df)} Ensembl transcript(s)")
+    try:
+        df = pd.read_csv(input_resolved, sep="\t", dtype={"chrom": "object"})
+    except FileNotFoundError as e:
+        log.error(f"Input file not found: {input_resolved}")
+        raise
+    except pd.errors.ParserError as e:
+        log.error(f"Failed to parse TSV: {e}")
+        raise
 
-# Identify rows with GRC* accessions (those that need mapping)
-grc_mask = df["assembly_accession"].apply(is_grc_assembly_accession)
-needs_mapping = df[grc_mask]
-log.info(f"Found {len(needs_mapping)} row(s) with GRC* assembly names needing mapping")
+    log.info(f"Loaded {len(df)} Ensembl transcript(s)")
 
-# Process all rows
-resolved_rows = []
-unresolved_rows = []
+    # Validate required columns
+    required_columns = ["transcript_id", "assembly_accession"]
+    missing = [c for c in required_columns if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
 
-for idx, row in df.iterrows():
-    assembly_val = row.get("assembly_accession")
+    # Filter and resolve using the dedicated function
+    resolved, unresolved = filter_and_resolve_ensembl(df)
 
-    # If not a GRC* accession, pass through unchanged (for resolved)
-    if not is_grc_assembly_accession(assembly_val):
-        resolved_rows.append(row.to_dict())
-        continue
+    # Log statistics
+    grc_mask = df["assembly_accession"].apply(is_grc_assembly_accession)
+    needs_mapping = df[grc_mask]
+    log.info(f"Found {len(needs_mapping)} row(s) with GRC* assembly names needing mapping")
 
-    # Try to map GRC* to GCF_
-    mapped = map_grc_to_gcf(str(assembly_val))
-    if mapped:
-        row_dict = row.to_dict()
-        row_dict["assembly_accession"] = mapped
-        log.debug(f"  {row.get('transcript_id')}: {assembly_val} → {mapped}")
-        resolved_rows.append(row_dict)
-    else:
-        # Could not map - goes to unresolved
-        log.warning(f"  {row.get('transcript_id')}: unmappable GRC* accession: {assembly_val}")
-        unresolved_rows.append({
-            "transcript_id": row.get("transcript_id"),
-            "db_source": row.get("db_source", "ensembl"),
-            "reason": f"grc_mapping_failed:{assembly_val}",
-        })
+    # Write outputs
+    log.info(f"Writing {len(resolved)} resolved row(s) to {out_resolved}")
+    try:
+        if len(resolved) > 0:
+            # Ensure columns exist and are in the right order (handle cases with extra columns)
+            cols_to_write = [c for c in RESOLVED_COLS if c in resolved.columns]
+            # If there are extra columns, keep them at the end
+            extra_cols = [c for c in resolved.columns if c not in RESOLVED_COLS]
+            resolved[cols_to_write + extra_cols].to_csv(out_resolved, sep="\t", index=False)
+        else:
+            pd.DataFrame(columns=RESOLVED_COLS).to_csv(out_resolved, sep="\t", index=False)
+    except IOError as e:
+        log.error(f"Failed to write resolved output to {out_resolved}: {e}")
+        raise
 
-# Construct output dataframes
-resolved = pd.DataFrame(resolved_rows) if resolved_rows else pd.DataFrame()
-unresolved = pd.DataFrame(unresolved_rows) if unresolved_rows else pd.DataFrame()
+    try:
+        if len(unresolved) > 0:
+            log.warning(f"Writing {len(unresolved)} unresolved row(s) to {out_unresolved}")
+            unresolved.to_csv(out_unresolved, sep="\t", index=False)
+        else:
+            log.info("No unresolved rows")
+            pd.DataFrame(columns=["transcript_id", "db_source", "reason"]).to_csv(
+                out_unresolved, sep="\t", index=False
+            )
+    except IOError as e:
+        log.error(f"Failed to write unresolved output to {out_unresolved}: {e}")
+        raise
 
-# Write outputs
-log.info(f"Writing {len(resolved)} resolved row(s) to {out_resolved}")
-if len(resolved) > 0:
-    # Ensure columns exist and are in the right order (handle cases with extra columns)
-    cols_to_write = [c for c in RESOLVED_COLS if c in resolved.columns]
-    # If there are extra columns, keep them at the end
-    extra_cols = [c for c in resolved.columns if c not in RESOLVED_COLS]
-    resolved[cols_to_write + extra_cols].to_csv(out_resolved, sep="\t", index=False)
-else:
-    pd.DataFrame(columns=RESOLVED_COLS).to_csv(out_resolved, sep="\t", index=False)
-
-if len(unresolved) > 0:
-    log.warning(f"Writing {len(unresolved)} unresolved row(s) to {out_unresolved}")
-    unresolved.to_csv(out_unresolved, sep="\t", index=False)
-else:
-    log.info("No unresolved rows")
-    pd.DataFrame(columns=["transcript_id", "db_source", "reason"]).to_csv(
-        out_unresolved, sep="\t", index=False
-    )
-
-log.info(f"Resolved: {len(resolved)}, Unresolved: {len(unresolved)}")
-log.info("Done.")
+    log.info(f"Resolved: {len(resolved)}, Unresolved: {len(unresolved)}")
+    log.info("Done.")
