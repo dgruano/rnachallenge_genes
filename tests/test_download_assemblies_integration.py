@@ -151,6 +151,7 @@ class TestDownloadAssembliesIntegration:
             asm_dir = cache_dir / "GCF_000001405.40"
             asm_dir.mkdir(parents=True)
             (asm_dir / "genome.fasta").touch()
+            (asm_dir / "genome.fasta.fai").touch()
 
             df = pd.DataFrame({
                 "transcript_id": ["TX1"],
