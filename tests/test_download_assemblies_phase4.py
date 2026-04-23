@@ -46,13 +46,15 @@ def should_download_assembly(row, cache_dir: Path) -> bool:
     """
     Determine if an assembly should be downloaded based on:
     - Must be GCF_/GCA_ accession
-    - Must not be cached already
+    - Must not be cached already (both FASTA and index files must exist)
     """
     if not is_ncbi_assembly_accession(row["assembly_accession"]):
         return False
 
-    cached = cache_dir / row["assembly_accession"] / "genome.fasta"
-    return not cached.exists()
+    cached_fasta = cache_dir / row["assembly_accession"] / "genome.fasta"
+    cached_idx = cache_dir / row["assembly_accession"] / "genome.fasta.fai"
+    # Only consider it cached if BOTH files exist
+    return not (cached_fasta.exists() and cached_idx.exists())
 
 
 def split_assemblies(
@@ -60,10 +62,13 @@ def split_assemblies(
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Split input dataframe into:
-    - downloaded: GCF_/GCA_ accessions not in cache
+    - downloaded: GCF_/GCA_ accessions not fully cached (missing FASTA or index)
     - unresolved: Non-GCF_/GCA_ accessions
 
     Returns (downloaded, unresolved)
+
+    Note: Cache is only considered valid if BOTH genome.fasta and genome.fasta.fai exist.
+    Missing either file triggers a re-download.
     """
     # Handle empty or incomplete DataFrames
     if df.empty or "assembly_accession" not in df.columns:
@@ -81,10 +86,13 @@ def split_assemblies(
 
     for _, row in unique_asm.iterrows():
         if is_ncbi_assembly_accession(row["assembly_accession"]):
-            cached = cache_dir / row["assembly_accession"] / "genome.fasta"
-            if not cached.exists():
+            # Check if BOTH cache files exist
+            cached_fasta = cache_dir / row["assembly_accession"] / "genome.fasta"
+            cached_idx = cache_dir / row["assembly_accession"] / "genome.fasta.fai"
+            if not (cached_fasta.exists() and cached_idx.exists()):
+                # Missing either file means we need to download
                 downloaded.append(row)
-            # else: already cached, skip (not in either output)
+            # else: both files cached, skip (not in either output)
         else:
             # Non-GCF_/GCA_ accession
             unresolved_row = row.copy()
@@ -165,12 +173,14 @@ class TestCacheChecking:
             assert should_download_assembly(row, cache_dir) is True
 
     def test_should_not_download_when_cached(self):
-        """Test that assembly is skipped when already cached."""
+        """Test that assembly is skipped when both cache files exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
             asm_dir = cache_dir / "GCF_000001405.40"
             asm_dir.mkdir(parents=True, exist_ok=True)
+            # Create BOTH cache files
             (asm_dir / "genome.fasta").touch()
+            (asm_dir / "genome.fasta.fai").touch()
 
             row = {
                 "assembly_accession": "GCF_000001405.40",
@@ -178,6 +188,40 @@ class TestCacheChecking:
                 "db_source": "ncbi",
             }
             assert should_download_assembly(row, cache_dir) is False
+
+    def test_missing_fasta_triggers_redownload(self):
+        """Test that missing FASTA file (with index present) triggers re-download."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            asm_dir = cache_dir / "GCF_000001405.40"
+            asm_dir.mkdir(parents=True, exist_ok=True)
+            # Create ONLY index file, missing FASTA
+            (asm_dir / "genome.fasta.fai").touch()
+
+            row = {
+                "assembly_accession": "GCF_000001405.40",
+                "organism": "homo sapiens",
+                "db_source": "ncbi",
+            }
+            # Should return True because FASTA is missing
+            assert should_download_assembly(row, cache_dir) is True
+
+    def test_missing_index_triggers_redownload(self):
+        """Test that missing index file (with FASTA present) triggers re-download."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            asm_dir = cache_dir / "GCF_000001405.40"
+            asm_dir.mkdir(parents=True, exist_ok=True)
+            # Create ONLY FASTA file, missing index
+            (asm_dir / "genome.fasta").touch()
+
+            row = {
+                "assembly_accession": "GCF_000001405.40",
+                "organism": "homo sapiens",
+                "db_source": "ncbi",
+            }
+            # Should return True because index is missing
+            assert should_download_assembly(row, cache_dir) is True
 
     def test_should_not_download_non_ncbi_accession(self):
         """Test that non-NCBI accessions are never marked for download."""
@@ -289,13 +333,14 @@ class TestAssemblySplitting:
             assert "NC_000001.11" in unresolved["assembly_accession"].values
 
     def test_cached_assemblies_excluded(self):
-        """Test that cached NCBI assemblies are not in either output."""
+        """Test that cached NCBI assemblies (with both files) are not in either output."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            # Create cache for one assembly
+            # Create cache for one assembly (both files)
             asm_dir = cache_dir / "GCF_000001405.40"
             asm_dir.mkdir(parents=True, exist_ok=True)
             (asm_dir / "genome.fasta").touch()
+            (asm_dir / "genome.fasta.fai").touch()
 
             df = pd.DataFrame({
                 "transcript_id": ["TX1", "TX2"],
@@ -372,6 +417,51 @@ class TestAssemblySplitting:
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             # Null values should be dropped, so no output
+            assert len(downloaded) == 0
+            assert len(unresolved) == 0
+
+    def test_missing_index_file_triggers_split_to_downloaded(self):
+        """Test that assembly with FASTA but missing index goes to downloaded list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            # Create partial cache: FASTA but no index
+            asm_dir = cache_dir / "GCF_000001405.40"
+            asm_dir.mkdir(parents=True, exist_ok=True)
+            (asm_dir / "genome.fasta").touch()
+            # Note: genome.fasta.fai NOT created
+
+            df = pd.DataFrame({
+                "transcript_id": ["TX1"],
+                "assembly_accession": ["GCF_000001405.40"],
+                "organism": ["homo sapiens"],
+                "db_source": ["ncbi"],
+            })
+            downloaded, unresolved = split_assemblies(df, cache_dir)
+
+            # Assembly should be marked for download because index is missing
+            assert len(downloaded) == 1
+            assert len(unresolved) == 0
+            assert downloaded.iloc[0]["assembly_accession"] == "GCF_000001405.40"
+
+    def test_fully_cached_assembly_excluded_from_split(self):
+        """Test that assembly with both FASTA and index is excluded from output."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            # Create complete cache
+            asm_dir = cache_dir / "GCF_000001405.40"
+            asm_dir.mkdir(parents=True, exist_ok=True)
+            (asm_dir / "genome.fasta").touch()
+            (asm_dir / "genome.fasta.fai").touch()
+
+            df = pd.DataFrame({
+                "transcript_id": ["TX1"],
+                "assembly_accession": ["GCF_000001405.40"],
+                "organism": ["homo sapiens"],
+                "db_source": ["ncbi"],
+            })
+            downloaded, unresolved = split_assemblies(df, cache_dir)
+
+            # Fully cached assembly should be in neither output
             assert len(downloaded) == 0
             assert len(unresolved) == 0
 
