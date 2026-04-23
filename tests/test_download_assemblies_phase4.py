@@ -51,7 +51,7 @@ def should_download_assembly(row, cache_dir: Path) -> bool:
     if not is_ncbi_assembly_accession(row["assembly_accession"]):
         return False
 
-    cached = cache_dir / row["assembly_accession"] / "genomic.gtf.gz"
+    cached = cache_dir / row["assembly_accession"] / "genome.fasta"
     return not cached.exists()
 
 
@@ -81,7 +81,7 @@ def split_assemblies(
 
     for _, row in unique_asm.iterrows():
         if is_ncbi_assembly_accession(row["assembly_accession"]):
-            cached = cache_dir / row["assembly_accession"] / "genomic.gtf.gz"
+            cached = cache_dir / row["assembly_accession"] / "genome.fasta"
             if not cached.exists():
                 downloaded.append(row)
             # else: already cached, skip (not in either output)
@@ -170,7 +170,7 @@ class TestCacheChecking:
             cache_dir = Path(tmpdir)
             asm_dir = cache_dir / "GCF_000001405.40"
             asm_dir.mkdir(parents=True, exist_ok=True)
-            (asm_dir / "genomic.gtf.gz").touch()
+            (asm_dir / "genome.fasta").touch()
 
             row = {
                 "assembly_accession": "GCF_000001405.40",
@@ -295,7 +295,7 @@ class TestAssemblySplitting:
             # Create cache for one assembly
             asm_dir = cache_dir / "GCF_000001405.40"
             asm_dir.mkdir(parents=True, exist_ok=True)
-            (asm_dir / "genomic.gtf.gz").touch()
+            (asm_dir / "genome.fasta").touch()
 
             df = pd.DataFrame({
                 "transcript_id": ["TX1", "TX2"],

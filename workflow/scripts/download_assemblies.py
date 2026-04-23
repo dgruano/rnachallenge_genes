@@ -9,22 +9,25 @@ Simplified implementation handling only NCBI assembly accessions (GCF_/GCA_).
 Reads the resolved TSV to find all unique assembly_accession values.
 For each GCF_/GCA_ accession:
   1. Checks if already cached (skips if present)
-  2. Downloads from NCBI FTP → resources/cache/<accession>/genomic.gtf.gz
-  3. Indexes with samtools faidx
+  2. Downloads from NCBI FTP → resources/cache/<accession>/genomic.fna.gz (FASTA)
+  3. Decompresses to genome.fasta
+  4. Indexes with samtools faidx
 
 Non-GCF_/GCA_ accessions are marked as unresolved with reason "not_resolvable_by_download_assemblies".
 
 Cache layout:
   resources/cache/
     <assembly_accession>/
-      genomic.gtf.gz
-      genomic.gtf.gz.tbi (via samtools index)
+      genome.fasta
+      genome.fasta.fai (via samtools faidx)
 
 Output files:
   results/downloaded_assemblies.tsv - assemblies successfully downloaded/cached
   results/unresolved_assemblies.tsv - non-GCF_/GCA_ accessions
 """
 
+import gzip
+import shutil
 import subprocess
 import sys
 import time
@@ -94,10 +97,10 @@ def download_file(url: str, dest: Path, label: str) -> bool:
     return False
 
 
-def index_gtf(gtf_path: Path, label: str) -> bool:
-    """Index a GTF file with samtools index."""
-    log.info(f"  [{label}] Indexing with samtools index ...")
-    return run_cmd(["samtools", "index", str(gtf_path)], label)
+def index_fasta(fasta_path: Path, label: str) -> bool:
+    """Index a FASTA file with samtools faidx."""
+    log.info(f"  [{label}] Indexing with samtools faidx ...")
+    return run_cmd(["samtools", "faidx", str(fasta_path)], label)
 
 
 # ── NCBI FTP URL resolution ───────────────────────────────────
@@ -114,9 +117,9 @@ def is_ncbi_assembly_accession(accession: str) -> bool:
     return acc_str.startswith(("GCF_", "GCA_"))
 
 
-def ncbi_gtf_url(accession: str) -> Optional[str]:
+def ncbi_fasta_url(accession: str) -> Optional[str]:
     """
-    Resolve an NCBI assembly accession (GCF_/GCA_) to the genomic GTF URL.
+    Resolve an NCBI assembly accession (GCF_/GCA_) to the genomic FASTA URL.
     Uses the NCBI datasets API summary endpoint.
     """
     api_url = (
@@ -144,44 +147,56 @@ def ncbi_gtf_url(accession: str) -> Optional[str]:
         full_name = f"{accession}_{asm_name}"
         url = (
             f"{NCBI_FTP_BASE}/{prefix}/{d1}/{d2}/{d3}/"
-            f"{full_name}/{full_name}_genomic.gtf.gz"
+            f"{full_name}/{full_name}_genomic.fna.gz"
         )
-        log.debug(f"  NCBI GTF URL: {url}")
+        log.debug(f"  NCBI FASTA URL: {url}")
         return url
     except Exception as exc:
-        log.warning(f"  Could not resolve NCBI GTF URL for {accession}: {exc}")
+        log.warning(f"  Could not resolve NCBI FASTA URL for {accession}: {exc}")
         return None
 
 
 # ── Per-assembly download orchestrator ───────────────────────
 def ensure_assembly(accession: str) -> bool:
     """
-    Ensure GTF for the given NCBI assembly is downloaded and indexed.
+    Ensure FASTA for the given NCBI assembly is downloaded, decompressed, and indexed.
     Returns True if ready, False if download failed.
     """
     asm_dir = CACHE_DIR / accession
-    gtf = asm_dir / "genomic.gtf.gz"
-    tbi = asm_dir / "genomic.gtf.gz.tbi"
+    fasta_gz = asm_dir / "genomic.fna.gz"
+    fasta = asm_dir / "genome.fasta"
+    fai = asm_dir / "genome.fasta.fai"
     label = accession
 
-    if tbi.exists() and gtf.exists():
+    if fai.exists() and fasta.exists():
         log.info(f"  [{label}] Already cached and indexed — skipping download")
         return True
 
     asm_dir.mkdir(parents=True, exist_ok=True)
 
     # Determine download URL
-    url = ncbi_gtf_url(accession)
+    url = ncbi_fasta_url(accession)
     if url is None:
         log.error(f"  [{label}] Could not determine download URL")
         return False
 
-    # Download GTF
-    if not download_file(url, gtf, label):
+    # Download FASTA (compressed)
+    if not download_file(url, fasta_gz, label):
         return False
 
-    # Index
-    if not index_gtf(gtf, label):
+    # Decompress FASTA
+    try:
+        log.info(f"  [{label}] Decompressing {fasta_gz} → {fasta}")
+        with gzip.open(fasta_gz, 'rb') as f_in:
+            with open(fasta, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        log.debug(f"  [{label}] Decompression complete")
+    except Exception as exc:
+        log.error(f"  [{label}] Decompression failed: {exc}")
+        return False
+
+    # Index FASTA
+    if not index_fasta(fasta, label):
         return False
 
     return True
@@ -219,7 +234,7 @@ else:
             log.info(f"Processing GCF_/GCA_ accession: {accession}")
 
             # Check if already cached
-            cached = CACHE_DIR / accession / "genomic.gtf.gz"
+            cached = CACHE_DIR / accession / "genome.fasta"
             if cached.exists():
                 log.info(f"  [{accession}] Already cached — skipping")
                 downloaded.append(row)

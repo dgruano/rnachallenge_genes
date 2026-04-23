@@ -45,7 +45,7 @@ class TestDownloadAssembliesIntegration:
             content = f.read()
         # Check for key functions
         assert "is_ncbi_assembly_accession" in content
-        assert "ncbi_gtf_url" in content
+        assert "ncbi_fasta_url" in content
         assert "ensure_assembly" in content
         assert "downloaded_df.to_csv(output_downloaded" in content
 
@@ -150,7 +150,7 @@ class TestDownloadAssembliesIntegration:
             # Pre-create cache for one assembly
             asm_dir = cache_dir / "GCF_000001405.40"
             asm_dir.mkdir(parents=True)
-            (asm_dir / "genomic.gtf.gz").touch()
+            (asm_dir / "genome.fasta").touch()
 
             df = pd.DataFrame({
                 "transcript_id": ["TX1"],
