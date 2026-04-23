@@ -1,21 +1,25 @@
 # ============================================================
 # Rule: download_assemblies  (checkpoint)
 # ============================================================
-# Stage 3 — Download & Cache Genome Assemblies
+# Stage 3 / Phase 4 — Download & Cache NCBI Assemblies (Simplified)
 #
-# Reads the resolved transcript TSV to identify all unique
-# (organism, assembly_accession) pairs. For each pair:
+# Reads the resolved transcript TSV to identify unique assemblies.
+# For each GCF_/GCA_ accession:
 #   1. Checks if already cached (skips if present)
-#   2. Determines FTP source (NCBI FTP for GCF_/GCA_, Ensembl FTP otherwise)
-#   3. Downloads primary genome FASTA (chromosomes / top-level)
-#   4. Decompresses (.gz)
-#   5. Indexes with samtools faidx
+#   2. Downloads from NCBI FTP → resources/cache/<accession>/
+#   3. Indexes with samtools
+#
+# Non-GCF_/GCA_ accessions are marked as unresolved.
 #
 # Cache layout:
 #   resources/cache/
 #     <assembly_accession>/
-#       genome.fasta
-#       genome.fasta.fai
+#       genomic.gtf.gz
+#       genomic.gtf.gz.tbi
+#
+# Output:
+#   results/downloaded_assemblies.tsv - successfully downloaded
+#   results/unresolved_assemblies.tsv - non-GCF_/GCA_ accessions
 #
 # A checkpoint is used to allow dependent rules to fan out based
 # on which assemblies were downloaded.
@@ -26,6 +30,8 @@ checkpoint download_assemblies:
         resolved = f"{RESULTS}/resolved_ids.tsv",
     output:
         done = f"{RESULTS}/.assemblies_ready",
+        downloaded = f"{RESULTS}/downloaded_assemblies.tsv",
+        unresolved = f"{RESULTS}/unresolved_assemblies.tsv",
     log:
         f"{LOGS}/download_assemblies.log",
     benchmark:

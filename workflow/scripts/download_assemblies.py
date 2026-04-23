@@ -1,27 +1,30 @@
 """
 scripts/download_assemblies.py
-Stage 3 — Download & Cache Genome Assemblies
-=============================================
-Reads the resolved TSV to find all unique (organism, assembly_accession) pairs.
-For each pair:
-  1. Checks if already cached (skips if so)
-  2. Determines the FTP source (NCBI FTP for GCF_/GCA_, Ensembl FTP otherwise)
-  3. Downloads the primary genome FASTA (chromosomes / top-level)
-  4. Decompresses (.gz)
-  5. Indexes with samtools faidx
+
+Stage 3 / Phase 4 — Download & Cache Genome Assemblies (Simplified)
+====================================================================
+
+Simplified implementation handling only NCBI assembly accessions (GCF_/GCA_).
+
+Reads the resolved TSV to find all unique assembly_accession values.
+For each GCF_/GCA_ accession:
+  1. Checks if already cached (skips if present)
+  2. Downloads from NCBI FTP → resources/cache/<accession>/genomic.gtf.gz
+  3. Indexes with samtools faidx
+
+Non-GCF_/GCA_ accessions are marked as unresolved with reason "not_resolvable_by_download_assemblies".
 
 Cache layout:
   resources/cache/
     <assembly_accession>/
-      genome.fasta
-      genome.fasta.fai
+      genomic.gtf.gz
+      genomic.gtf.gz.tbi (via samtools index)
 
-Writes a sentinel file (.assemblies_ready) on success.
+Output files:
+  results/downloaded_assemblies.tsv - assemblies successfully downloaded/cached
+  results/unresolved_assemblies.tsv - non-GCF_/GCA_ accessions
 """
 
-import gzip
-import hashlib
-import shutil
 import subprocess
 import sys
 import time
@@ -37,6 +40,8 @@ from logging_utils import get_logger
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("download_assemblies", snakemake.log[0])
 input_tsv = snakemake.input.resolved
+output_downloaded = snakemake.output.downloaded
+output_unresolved = snakemake.output.unresolved
 out_sentinel = snakemake.output.done
 cfg = snakemake.config
 
@@ -45,8 +50,6 @@ MAX_RETRIES = int(cfg.get("max_retries", 3))
 RETRY_WAIT = int(cfg.get("retry_wait_seconds", 5))
 
 NCBI_FTP_BASE = "https://ftp.ncbi.nlm.nih.gov/genomes/all"
-ENSEMBL_FTP_BASE = "https://ftp.ensembl.org/pub/current_fasta"
-
 CHUNK_SIZE = 8 * 1024 * 1024  # 8 MB download chunks
 
 
@@ -91,30 +94,29 @@ def download_file(url: str, dest: Path, label: str) -> bool:
     return False
 
 
-def decompress_gz(gz_path: Path, out_path: Path, label: str) -> bool:
-    """Decompress a .gz file."""
-    log.info(f"  [{label}] Decompressing {gz_path.name} ...")
-    try:
-        with gzip.open(gz_path, "rb") as f_in, open(out_path, "wb") as f_out:
-            shutil.copyfileobj(f_in, f_out)
-        gz_path.unlink()
-        log.info(f"  [{label}] Decompressed → {out_path}")
-        return True
-    except Exception as exc:
-        log.error(f"  [{label}] Decompression failed: {exc}")
-        return False
-
-
-def index_fasta(fasta_path: Path, label: str) -> bool:
-    """Index a FASTA file with samtools faidx."""
-    log.info(f"  [{label}] Indexing with samtools faidx ...")
-    return run_cmd(["samtools", "faidx", str(fasta_path)], label)
+def index_gtf(gtf_path: Path, label: str) -> bool:
+    """Index a GTF file with samtools index."""
+    log.info(f"  [{label}] Indexing with samtools index ...")
+    return run_cmd(["samtools", "index", str(gtf_path)], label)
 
 
 # ── NCBI FTP URL resolution ───────────────────────────────────
-def ncbi_assembly_url(accession: str) -> Optional[str]:
+def is_ncbi_assembly_accession(accession: str) -> bool:
+    """Check if accession is a downloadable NCBI assembly accession (GCF_/GCA_)."""
+    try:
+        if pd.isna(accession):
+            return False
+    except (TypeError, ValueError):
+        pass
+    if not accession:
+        return False
+    acc_str = str(accession).strip()
+    return acc_str.startswith(("GCF_", "GCA_"))
+
+
+def ncbi_gtf_url(accession: str) -> Optional[str]:
     """
-    Resolve an NCBI assembly accession (GCF_/GCA_) to the genomic FASTA URL.
+    Resolve an NCBI assembly accession (GCF_/GCA_) to the genomic GTF URL.
     Uses the NCBI datasets API summary endpoint.
     """
     api_url = (
@@ -129,155 +131,144 @@ def ncbi_assembly_url(accession: str) -> Optional[str]:
         if not reports:
             return None
         report = reports[0]
-        ftp_path = report.get("assembly_info", {}).get("assembly_stats", {})
-        # Try to build the FTP URL from the accession pattern
-        # GCF_000001405.40 → GCF/000/001/405/GCF_000001405.40_GRCh38.p14/
-        acc_no_version = accession.split(".")[0]
-        prefix = acc_no_version[0:3]  # GCF or GCA
-        digits = acc_no_version[4:]  # 000001405
-        d1, d2, d3 = digits[0:3], digits[3:6], digits[6:9]
         asm_name = report.get("assembly_info", {}).get("assembly_name", "")
         if not asm_name:
             return None
+
+        # Build FTP URL from accession pattern
+        # GCF_000001405.40 → GCF/000/001/405/GCF_000001405.40_GRCh38.p14/
+        acc_no_version = accession.split(".")[0]
+        prefix = acc_no_version[0:3]  # GCF or GCA
+        digits = acc_no_version[4:]   # 000001405
+        d1, d2, d3 = digits[0:3], digits[3:6], digits[6:9]
         full_name = f"{accession}_{asm_name}"
         url = (
             f"{NCBI_FTP_BASE}/{prefix}/{d1}/{d2}/{d3}/"
-            f"{full_name}/{full_name}_genomic.fna.gz"
+            f"{full_name}/{full_name}_genomic.gtf.gz"
         )
-        log.debug(f"  NCBI FTP URL: {url}")
+        log.debug(f"  NCBI GTF URL: {url}")
         return url
     except Exception as exc:
-        log.warning(f"  Could not resolve NCBI FTP URL for {accession}: {exc}")
+        log.warning(f"  Could not resolve NCBI GTF URL for {accession}: {exc}")
         return None
-
-
-# ── Ensembl FTP URL resolution ────────────────────────────────
-def ensembl_assembly_url(organism: str, assembly: str) -> Optional[str]:
-    """
-    Build an Ensembl FTP URL for the toplevel genomic FASTA.
-    organism: scientific name, e.g. 'homo sapiens'
-    assembly: e.g. 'GRCh38'
-    """
-    # Ensembl uses species names like homo_sapiens
-    species = organism.lower().replace(" ", "_")
-    if not species:
-        return None
-    url = (
-        f"{ENSEMBL_FTP_BASE}/{species}/dna/"
-        f"{species.capitalize()}.{assembly}.dna.toplevel.fa.gz"
-    )
-    log.debug(f"  Ensembl FTP URL: {url}")
-    return url
 
 
 # ── Per-assembly download orchestrator ───────────────────────
-def ensure_assembly(accession: str, organism: str, db_source: str) -> bool:
+def ensure_assembly(accession: str) -> bool:
     """
-    Ensure genome FASTA for the given assembly is available and indexed.
+    Ensure GTF for the given NCBI assembly is downloaded and indexed.
     Returns True if ready, False if download failed.
     """
     asm_dir = CACHE_DIR / accession
-    fasta = asm_dir / "genome.fasta"
-    fai = Path(str(fasta) + ".fai")
+    gtf = asm_dir / "genomic.gtf.gz"
+    tbi = asm_dir / "genomic.gtf.gz.tbi"
     label = accession
 
-    if fai.exists() and fasta.exists():
+    if tbi.exists() and gtf.exists():
         log.info(f"  [{label}] Already cached and indexed — skipping download")
         return True
 
     asm_dir.mkdir(parents=True, exist_ok=True)
-    gz_path = asm_dir / "genome.fasta.gz"
 
-    # Determine download URL based on accession prefix
-    url: Optional[str] = None
-    if accession.startswith("GCF_") or accession.startswith("GCA_"):
-        url = ncbi_assembly_url(accession)
-    elif accession in ("hg38", "hg19", "mm39", "mm10", "rn7", "dm6", "danRer11"):
-        # UCSC assembly name — map to Ensembl/NCBI equivalent
-        UCSC_TO_ENSEMBL = {
-            "hg38": ("homo sapiens", "GRCh38"),
-            "hg19": ("homo sapiens", "GRCh37"),
-            "mm39": ("mus musculus", "GRCm39"),
-            "mm10": ("mus musculus", "GRCm38"),
-            "rn7": ("rattus norvegicus", "mRatBN7.2"),
-            "dm6": ("drosophila melanogaster", "BDGP6.46"),
-            "danRer11": ("danio rerio", "GRCz11"),
-        }
-        mapped = UCSC_TO_ENSEMBL.get(accession)
-        if mapped:
-            url = ensembl_assembly_url(*mapped)
-    else:
-        # Assume Ensembl assembly name
-        url = ensembl_assembly_url(organism, accession)
-
+    # Determine download URL
+    url = ncbi_gtf_url(accession)
     if url is None:
         log.error(f"  [{label}] Could not determine download URL")
         return False
 
-    # Download compressed FASTA
-    if not download_file(url, gz_path, label):
-        return False
-
-    # Decompress
-    if not decompress_gz(gz_path, fasta, label):
+    # Download GTF
+    if not download_file(url, gtf, label):
         return False
 
     # Index
-    if not index_fasta(fasta, label):
+    if not index_gtf(gtf, label):
         return False
 
     return True
 
 
 # ── Main ─────────────────────────────────────────────────────
-log.info("Stage 3: Downloading and caching genome assemblies")
+log.info("Stage 3 / Phase 4: Download and cache NCBI genome assemblies (simplified)")
 
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 df = pd.read_csv(input_tsv, sep="\t")
 
-# Get unique (assembly_accession, organism, db_source) combos
-asm_df = (
-    df[["assembly_accession", "organism", "db_source"]]
-    .dropna(subset=["assembly_accession"])
-    .drop_duplicates(subset="assembly_accession")
-)
-log.info(f"Unique assemblies to ensure: {len(asm_df)}")
-for _, row in asm_df.iterrows():
-    log.info(f"  {row['assembly_accession']} | {row['organism']} | {row['db_source']}")
+# Get unique assemblies, handling missing column gracefully
+if "assembly_accession" not in df.columns:
+    log.error("Input TSV missing 'assembly_accession' column")
+    downloaded_df = pd.DataFrame()
+    unresolved_df = df.copy()
+    unresolved_df["reason"] = "missing_assembly_accession_column"
+else:
+    unique_asm = (
+        df[["assembly_accession", "organism", "db_source"]]
+        .dropna(subset=["assembly_accession"])
+        .drop_duplicates(subset="assembly_accession")
+    )
 
-successes = 0
-failures = []
+    downloaded = []
+    unresolved = []
 
-for _, row in asm_df.iterrows():
-    acc = str(row["assembly_accession"])
-    org = str(row.get("organism", ""))
-    src = str(row.get("db_source", ""))
-    log.info(f"Processing assembly: {acc} ({org})")
+    log.info(f"Unique assemblies to process: {len(unique_asm)}")
 
-    ok = ensure_assembly(acc, org, src)
-    if ok:
-        successes += 1
-        log.info(f"  ✓ {acc} ready")
-    else:
-        failures.append(acc)
-        log.error(f"  ✗ {acc} FAILED")
+    for _, row in unique_asm.iterrows():
+        accession = str(row["assembly_accession"]).strip()
+
+        if is_ncbi_assembly_accession(accession):
+            log.info(f"Processing GCF_/GCA_ accession: {accession}")
+
+            # Check if already cached
+            cached = CACHE_DIR / accession / "genomic.gtf.gz"
+            if cached.exists():
+                log.info(f"  [{accession}] Already cached — skipping")
+                downloaded.append(row)
+            else:
+                # Try to download
+                ok = ensure_assembly(accession)
+                if ok:
+                    downloaded.append(row)
+                    log.info(f"  ✓ {accession} ready")
+                else:
+                    log.error(f"  ✗ {accession} FAILED to download")
+                    unresolved_row = row.copy()
+                    unresolved_row["reason"] = "download_failed"
+                    unresolved.append(unresolved_row)
+        else:
+            # Non-GCF_/GCA_ accession
+            log.warning(
+                f"Skipping non-GCF_/GCA_ accession: {accession} "
+                "(not supported in simplified Phase 4)"
+            )
+            unresolved_row = row.copy()
+            unresolved_row["reason"] = "not_resolvable_by_download_assemblies"
+            unresolved.append(unresolved_row)
+
+    downloaded_df = pd.DataFrame(downloaded) if downloaded else pd.DataFrame()
+    unresolved_df = pd.DataFrame(unresolved) if unresolved else pd.DataFrame()
+
+# Write output TSVs
+log.info(f"Writing {len(downloaded_df)} downloaded assemblies to {output_downloaded}")
+downloaded_df.to_csv(output_downloaded, sep="\t", index=False)
+
+log.info(f"Writing {len(unresolved_df)} unresolved assemblies to {output_unresolved}")
+unresolved_df.to_csv(output_unresolved, sep="\t", index=False)
 
 # Write sentinel
 sentinel = Path(out_sentinel)
 sentinel.parent.mkdir(parents=True, exist_ok=True)
 with open(sentinel, "w") as fh:
-    fh.write(f"assemblies_ready\nsuccesses={successes}\nfailures={len(failures)}\n")
-    for f in failures:
-        fh.write(f"FAILED: {f}\n")
+    fh.write("assemblies_ready\n")
+    fh.write(f"downloaded={len(downloaded_df)}\n")
+    fh.write(f"unresolved={len(unresolved_df)}\n")
 
 # ── Summary ──────────────────────────────────────────────────
 log.info("=" * 60)
-log.info(f"Total assemblies needed      : {len(asm_df)}")
-log.info(f"Successfully prepared        : {successes}")
-log.info(f"Failed                       : {len(failures)}")
-if failures:
-    log.warning(f"Failed assemblies: {failures}")
-    log.warning("Transcripts requiring these assemblies will be skipped in Stage 4")
-log.info(f"Cache directory              : {CACHE_DIR}")
-log.info("Stage 3 complete.")
+log.info(f"Total unique assemblies processed : {len(unique_asm)}")
+log.info(f"Successfully downloaded/cached    : {len(downloaded_df)}")
+log.info(f"Unresolved (non-GCF_/GCA_)       : {len(unresolved_df)}")
+log.info(f"Output files:")
+log.info(f"  Downloaded: {output_downloaded}")
+log.info(f"  Unresolved: {output_unresolved}")
+log.info(f"Cache directory                  : {CACHE_DIR}")
+log.info("Stage 3 / Phase 4 complete.")
