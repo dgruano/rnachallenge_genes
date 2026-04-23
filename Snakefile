@@ -20,7 +20,10 @@ from pathlib import Path
 
 configfile: "config/config.yaml"
 configfile: "config/plant_gtf_sources.yaml"
+configfile: "config/phytozome_gtf_sources.yaml"
+configfile: "config/metazoa_gtf_sources.yaml"
 configfile: "config/tool_sources.yaml"
+configfile: "config/yeast_gtf_sources.yaml"
 
 RESULTS    = config["results_dir"]
 LOGS       = config["logs_dir"]
@@ -34,22 +37,31 @@ include: "workflow/rules/source_mapping.smk"          # Stage 0: download tool F
 include: "workflow/rules/parse_ids.smk"
 include: "workflow/rules/download_metadata.smk"          # metadata table downloads
 include: "workflow/rules/resolve_ids.smk"                # NCBI + UCSC
-include: "workflow/rules/resolve_external_ids.smk"       # plants + WormBase
+include: "workflow/rules/resolve_external_ids.smk"       # plant-specific external resolution
+include: "workflow/rules/resolve_metazoa_gtf.smk"        # direct worm + fly annotation resolution
+include: "workflow/rules/resolve_yeast_gtf.smk"          # direct SGD yeast annotation resolution
 include: "workflow/rules/biomart_plant_batch.smk"        # BioMart batch for plants
 include: "workflow/rules/resolve_plant_gtf.smk"          # GTF fallback for BioMart failures
+include: "workflow/rules/resolve_phytozome_gtf.smk"      # GFF3 fallback for Phytozome-backed plant IDs
 include: "workflow/rules/gramene_resolver.smk"           # Gramene API for legacy IDs
 include: "workflow/rules/detect_ensembl_species.smk"     # checkpoint: infer species
 include: "workflow/rules/biomart_lookup.smk"             # wrapper: per-species BioMart
 include: "workflow/rules/join_ensembl_results.smk"       # join BioMart tables → Ensembl resolved
+include: "workflow/rules/resolve_ensembl_assembly_accessions.smk"  # Map assembly names → GCF_/GCA_
+include: "workflow/rules/resolve_noncode_assembly_accessions.smk" # Map UCSC names → GCF_/GCA_ for NONCODE
 include: "workflow/rules/resolve_noncode.smk"            # NONCODE v5 transcript/gene IDs
 include: "workflow/rules/resolve_noncode_v4.smk"         # NONCODEv4 fallback for v5-unresolved IDs
 include: "workflow/rules/resolve_noncode_2016.smk"       # NONCODE2016 fallback (existence only)
 include: "workflow/rules/resolve_ncbi_genbank.smk"       # EPost→EFetch second-pass resolver
+include: "workflow/rules/resolve_ncbi_assembly_accessions.smk"  # Map NC_/NW_ → GCF_/GCA_
 include: "workflow/rules/resolve_abandoned_accessions.smk"  # GTF-based third-pass resolver
 include: "workflow/rules/merge_resolved.smk"             # unify all three DB streams
 include: "workflow/rules/download_assemblies.smk"        # checkpoint: cache genome FASTAs
 include: "workflow/rules/extract_sequences.smk"
 include: "workflow/rules/report.smk"
+
+# ── Test rules (optional; not part of main pipeline) ───────
+include: "workflow/rules/test_abandoned_accessions.smk"  # 100-transcript test harness
 
 # ── Target rule ──────────────────────────────────────────────
 rule all:
@@ -66,3 +78,9 @@ rule all:
         not_found = f"{RESULTS}/matched_not_found.tsv",
         unresolv = f"{RESULTS}/unresolved.tsv",
         ambig    = f"{RESULTS}/ambiguous.tsv",
+
+
+# ── Intermediate target: resolution report (no assembly download needed) ────
+rule resolution_report_target:
+    input:
+        f"{RESULTS}/resolution_report.html",
