@@ -1,0 +1,96 @@
+					flowchart TD
+    INPUT(["RNAChallenge.fa\n27,283 sequences"])
+
+    subgraph PREP ["① Preparation"]
+        parse_ids["parse_ids\nextract + classify IDs\nby source hint"]
+        download_meta["download_all_metadata_tables\nNCBI taxonomy, ID maps"]
+        download_idmap["download_id_mappings\nUniProt / cross-ref tables"]
+    end
+
+    subgraph NCBI_STREAM ["② NCBI / UCSC stream  (RefSeq · 9,245 IDs)"]
+        resolve_ids["resolve_ids\nesearch → elink → esummary\nNCBI + UCSC lookup"]
+        ncbi_res[("ncbi_ucsc_resolved.tsv")]
+        ncbi_unres[("ncbi_ucsc_unresolved.tsv")]
+        resolve_ids -->|resolved| ncbi_res
+        resolve_ids -->|failed| ncbi_unres
+
+        subgraph GENBANK_FB ["   Fallback: EPost→EFetch   "]
+            resolve_ncbi_genbank["resolve_ncbi_genbank\nEPost → esearch(Count)\n→ EFetch → gene esummary"]
+            gb_res[("ncbi_genbank_resolved.tsv\n2,038 rows · 14 species")]
+            gb_unres[("ncbi_genbank_unresolved.tsv\n931 withdrawn")]
+        end
+        ncbi_unres --> resolve_ncbi_genbank
+        resolve_ncbi_genbank -->|resolved| gb_res
+        resolve_ncbi_genbank -->|withdrawn| gb_unres
+    end
+
+    subgraph ENSEMBL_STREAM ["③ Ensembl stream  (Ensembl IDs · 7,622 IDs)"]
+        detect_species{{"checkpoint\ndetect_ensembl_species\ninfer organism per ID"}}
+        biomart_lookup["biomart_lookup\n(×N species, parallel)\nBioMart REST API"]
+        join_ensembl["join_ensembl_results\ncollect per-species tables"]
+        ens_res[("ensembl_resolved.tsv")]
+        detect_species --> biomart_lookup --> join_ensembl --> ens_res
+    end
+
+    subgraph PLANT_STREAM ["④ Specialist plant / model-org stream"]
+        resolve_external["resolve_external_ids\nWormBase · FlyBase · SGD\nTAIR · Plant IDs"]
+        biomart_plant["biomart_plant_batch\nbulk BioMart for plant IDs"]
+        gramene["gramene_resolver\nGramene API (legacy maize/rice)"]
+        ext_res[("external_resolved.tsv  +  ambiguous.tsv")]
+        bm_res[("biomart_resolved.tsv")]
+        gram_res[("gramene_resolved.tsv")]
+        resolve_external --> ext_res
+        biomart_plant --> bm_res
+        gramene --> gram_res
+    end
+
+    subgraph NONCODE_STREAM ["⑤ NONCODE stream  (NONCODE IDs · 1,727 IDs)"]
+        resolve_noncode["resolve_noncode\nNONCODE v5 transcript→gene map"]
+        resolve_noncode_v4["resolve_noncode_v4\nNONCODE v4 fallback"]
+        resolve_noncode_2016["resolve_noncode_2016\nNONCODE 2016 existence check"]
+        nc_res[("noncode_resolved.tsv")]
+        nc_fb[("v4/2016 unresolved")]
+        resolve_noncode -->|unresolved| resolve_noncode_v4 -->|still unresolved| resolve_noncode_2016
+        resolve_noncode -->|resolved| nc_res
+        resolve_noncode_v4 -->|resolved| nc_res
+        resolve_noncode_2016 --> nc_fb
+    end
+
+    subgraph MERGE ["⑥ Merge & output"]
+        merge_resolved["merge_resolved\nunify all streams\ndeduplicate by transcript_id"]
+        dl_assemblies{{"checkpoint\ndownload_assemblies\nfetch genome FASTAs\nfor resolved species"}}
+        extract_seq["extract_sequences\nslice flanking regions\nfrom genome FASTAs"]
+        report["report\nHTML summary"]
+        merged_out[("output.fasta\noutput.bed\nambiguous.tsv\nunresolved.tsv")]
+    end
+
+    INPUT --> parse_ids
+    parse_ids --> resolve_ids
+    parse_ids --> detect_species
+    parse_ids --> resolve_external
+    parse_ids --> biomart_plant
+    parse_ids --> gramene
+    parse_ids --> resolve_noncode
+    download_meta --> parse_ids
+    download_idmap --> resolve_ids
+
+    ncbi_res --> merge_resolved
+    gb_res --> merge_resolved
+    ens_res --> merge_resolved
+    ext_res --> merge_resolved
+    bm_res --> merge_resolved
+    gram_res --> merge_resolved
+    nc_res --> merge_resolved
+
+    merge_resolved --> dl_assemblies --> extract_seq --> merged_out
+    extract_seq --> report
+
+    style GENBANK_FB fill:#fff3cd,stroke:#e6a817
+    style NCBI_STREAM fill:#e8f4fd,stroke:#2980b9
+    style ENSEMBL_STREAM fill:#eafaf1,stroke:#27ae60
+    style PLANT_STREAM fill:#fdf2e9,stroke:#e67e22
+    style NONCODE_STREAM fill:#f4ecf7,stroke:#8e44ad
+    style MERGE fill:#fdedec,stroke:#e74c3c
+    style PREP fill:#f2f3f4,stroke:#7f8c8d
+
+				

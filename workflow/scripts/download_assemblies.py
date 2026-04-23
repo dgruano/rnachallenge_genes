@@ -233,10 +233,11 @@ else:
         if is_ncbi_assembly_accession(accession):
             log.info(f"Processing GCF_/GCA_ accession: {accession}")
 
-            # Check if already cached
-            cached = CACHE_DIR / accession / "genome.fasta"
-            if cached.exists():
-                log.info(f"  [{accession}] Already cached — skipping")
+            # Check if already cached (both FASTA and index)
+            cached_fasta = CACHE_DIR / accession / "genome.fasta"
+            cached_idx = CACHE_DIR / accession / "genome.fasta.fai"
+            if cached_fasta.exists() and cached_idx.exists():
+                log.info(f"  [{accession}] Already cached and indexed — skipping")
                 downloaded.append(row)
             else:
                 # Try to download

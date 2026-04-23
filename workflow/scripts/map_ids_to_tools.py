@@ -58,6 +58,8 @@ results/tool_source_map.tsv  — one row per RNAChallenge transcript:
                        (exact_id | exact_header_ws | gi_canonical |
                         version_aware | multi_token | regex_scan |
                         seq_hash | seq_hash_ut)
+    matching_tokens  : pipe-separated tool:tokens pairs showing what matched
+                       (e.g., "CPPred:AT1G10440;AT1G10440.1|LGC:AT1G10440")
 
 results/tool_source_stats.tsv — per-tool counts:
     tool, n_matched, n_sequences_loaded, n_possible_ids_loaded,
@@ -185,6 +187,12 @@ def _all_ids_from_header(description: str) -> set[str]:
         # Sub-GI check on each token
         m = _GI_RE.search(token)
         norm = m.group(2) if m else token
+        # Skip key:value metadata fields (chromosome:, gene_biotype:, etc.)
+        if ":" in norm:
+            continue
+        # Skip pure-alpha strings — accessions always contain at least one digit
+        if not any(c.isdigit() for c in norm):
+            continue
         if len(norm) >= 4:  # skip trivially short tokens
             ids.add(norm)
             ids.add(re.sub(r"\.\d+$", "", norm))
@@ -537,6 +545,7 @@ for rec in challenge_records:
 
     matched_tools:     list[str] = []
     matched_strategies: list[str] = []
+    matched_tokens:    dict[str, str] = {}  # tool -> comma-separated matching tokens
 
     for tool in sorted(tool_id_sets.keys()):
         header_set = tool_header_sets[tool]
@@ -549,27 +558,33 @@ for rec in challenge_records:
         hash_ut_map = tool_hash_ut_maps[tool]
 
         strategy = None
+        match_tokens = []
 
         # Pass 1 — strict raw-header equality
         if raw_hdr in header_set:
             strategy = "exact_id"
+            match_tokens = [raw_hdr]
 
         # Pass 1b — whitespace-canonical header equality
         if strategy is None and raw_hdr_ws in header_ws_set:
             strategy = "exact_header_ws"
+            match_tokens = [raw_hdr_ws]
 
         # Pass 1c — GI-canonical direct matching
         if strategy is None and gi_ids & gi_set:
             strategy = "gi_canonical"
+            match_tokens = sorted(gi_ids & gi_set)
 
         # Pass 1d — version-aware recognised accession matching
         if strategy is None and (acc_exact & acc_exact_set or acc_base & acc_base_set):
             strategy = "version_aware"
+            match_tokens = sorted((acc_exact & acc_exact_set) | (acc_base & acc_base_set))
 
         # Pass 2 — multi-token: any of the IDs extracted from the
         # RNAChallenge header appear in the tool's expanded ID set
         if strategy is None and all_ids & id_set:
             strategy = "multi_token"
+            match_tokens = sorted(all_ids & id_set)
 
         # Pass 3 — regex scan: any accession found in the
         # RNAChallenge header matches any accession in the tool
@@ -579,14 +594,17 @@ for rec in challenge_records:
         # Pass 4 — sequence hash
         if strategy is None and seq_hash in hash_map:
             strategy = "seq_hash"
+            match_tokens = [seq_hash]
 
         # Pass 5 — U/T-normalised sequence hash
         if strategy is None and seq_hash_ut in hash_ut_map:
             strategy = "seq_hash_ut"
+            match_tokens = [seq_hash_ut]
 
         if strategy:
             matched_tools.append(tool)
             matched_strategies.append(strategy)
+            matched_tokens[tool] = ";".join(match_tokens)
             tool_strategy_counts[tool][strategy] += 1
 
     rows.append({
@@ -596,11 +614,12 @@ for rec in challenge_records:
         "n_tools":         len(matched_tools),
         "primary_tool":    matched_tools[0] if matched_tools else "",
         "match_strategy":  ",".join(dict.fromkeys(matched_strategies)),  # unique, ordered
+        "matching_tokens": "|".join(f"{t}:{matched_tokens[t]}" for t in matched_tools),
     })
 
 df_map = pd.DataFrame(rows, columns=[
     "transcript_id", "raw_header", "tools", "n_tools",
-    "primary_tool", "match_strategy",
+    "primary_tool", "match_strategy", "matching_tokens",
 ])
 
 # ── Write outputs ─────────────────────────────────────────────

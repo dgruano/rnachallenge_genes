@@ -25,7 +25,7 @@ default-resources:
   slurm_extra: ""                        # e.g. "--mail-type=FAIL --mail-user=you@example.com"
 
 # --- Retries for failed SLURM jobs ---
-retries: 2
+retries: 0
 
 # --- Logging ---
 # Snakemake logs go to .snakemake/log/

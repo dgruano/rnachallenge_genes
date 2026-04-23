@@ -175,10 +175,25 @@ def build_biomart_query(dataset: str, transcript_ids: List[str]) -> str:
     )
 
 
+def _check_endpoint(url: str) -> bool:
+    """Lightweight liveness check — avoids spending retry budget on dead endpoints."""
+    try:
+        resp = requests.get(url, params={"type": "registry"}, timeout=15)
+        return resp.status_code == 200
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+        return False
+
+
 def _post_query(url: str, query: str) -> Optional[pd.DataFrame]:
     """
-    POST a BioMart XML query and return a DataFrame on success, or None on
-    network/HTTP failure. Does not retry internally — caller handles retries.
+    POST a BioMart XML query.
+
+    Returns:
+      None            — transient failure (network/HTTP error, BioMart ERROR body);
+                        caller should retry.
+      empty DataFrame — server is up but returned no results;
+                        caller should NOT retry this URL, but may try next release.
+      populated DataFrame — success.
     """
     try:
         resp = requests.post(url, data={"query": query}, timeout=120)
@@ -190,9 +205,15 @@ def _post_query(url: str, query: str) -> Optional[pd.DataFrame]:
         log.warning(f"HTTP {resp.status_code} from {url}")
         return None
 
-    lines = resp.text.strip().split("\n")
+    # BioMart returns HTTP 200 with "ERROR ..." body on malformed queries.
+    text = resp.text.strip()
+    if text.upper().startswith("ERROR"):
+        log.warning(f"BioMart query error from {url}: {text[:200]}")
+        return None  # retriable — may be a transient mart error
+
+    lines = text.split("\n")
     if len(lines) < 2:
-        return None  # empty body — treat as failure so caller can fall back
+        return pd.DataFrame()  # server up, no results — don't retry
 
     header = lines[0].split("\t")
     data   = [line.split("\t") for line in lines[1:] if line.strip()]
@@ -206,7 +227,14 @@ def query_biomart_with_fallback(
     """
     Query BioMart for *transcript_ids* in *dataset*, trying each release in
     ENSEMBL_PLANTS_RELEASES in order.  Returns (DataFrame, release_label).
-    DataFrame is empty if all releases fail.
+    DataFrame is empty if all releases fail or return no matches.
+
+    Release fallback strategy:
+    - Skip release entirely if endpoint is unreachable (liveness check).
+    - Retry only on None (transient failure); an empty-but-valid response
+      means the server is up — no point retrying, but older releases may
+      still have retired IDs so the fallback chain continues.
+    - Return immediately on the first non-empty result.
     """
     query = build_biomart_query(dataset, transcript_ids)
 
@@ -215,12 +243,16 @@ def query_biomart_with_fallback(
             f"Trying Ensembl Plants {release_label} for {dataset} "
             f"({len(transcript_ids)} IDs)"
         )
-        df: Optional[pd.DataFrame] = None
 
+        if not _check_endpoint(url):
+            log.warning(f"  {release_label} endpoint unreachable — skipping")
+            continue
+
+        df: Optional[pd.DataFrame] = None
         for attempt in range(1, MAX_RETRIES + 1):
             df = _post_query(url, query)
             if df is not None:
-                break
+                break  # server responded (may be empty) — stop retrying this URL
             if attempt < MAX_RETRIES:
                 wait = RETRY_WAIT * attempt
                 log.warning(
@@ -229,15 +261,19 @@ def query_biomart_with_fallback(
                 )
                 time.sleep(wait)
 
-        if df is not None and not df.empty:
-            log.info(
-                f"  Success on {release_label}: {len(df)} rows returned"
+        if df is None:
+            # Endpoint failed all retries — try next release
+            log.warning(
+                f"  {release_label} failed after {MAX_RETRIES} attempts — trying next release"
             )
+            continue
+
+        if not df.empty:
+            log.info(f"  Success on {release_label}: {len(df)} rows returned")
             return df, release_label
 
-        log.warning(
-            f"  No data from Ensembl Plants {release_label} for {dataset}"
-        )
+        # df is empty: server is live, IDs not in this release — try older releases
+        log.info(f"  {release_label} returned no matches — trying older release")
 
     log.error(
         f"All Ensembl Plants releases exhausted for {dataset} — "

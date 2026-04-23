@@ -2,40 +2,44 @@
 scripts/resolve_abandoned_accessions.py
 Third-pass resolver: abandoned (withdrawn/suppressed) NCBI accessions
 ======================================================================
-Strategy
---------
-Follows the notebook pipeline exactly, then applies a Gene-ID-based fallback:
+Strategy — 4-phase pipeline
+----------------------------
 
-1. ``efetch(db="nucleotide", rettype="gb")`` per transcript to get its
-   GenBank record, then extract the parent genomic accession (NC_/NT_/NW_/AC_)
-   from ``dbxrefs`` or the ``comment`` annotation field.  Also records NCBI
-   Gene IDs (``/db_xref="GeneID:…"``) for use in Step 6.
-2. ``efetch(db="nucleotide", rettype="gb")`` per unique genomic accession to
-   get the chromosome/scaffold record, then extract the assembly accession
-   from ``dbxrefs`` (``Assembly:<acc>`` entries) and Gene IDs.
-3. For each unique assembly accession: ``esearch`` to get the assembly UID,
-   collect all UIDs, then ONE batch ``esummary(assembly)`` call to recover
-   FTP paths and organism names for all assemblies at once.
-4. Download assembly GTF (``*_genomic.gtf.gz``) for each unique assembly;
-   cache under ``resources/cache/<assembly_accession>/genomic.gtf.gz``.
-5. For each assembly, scan the GTF **once** (two passes total) to extract
-   annotations for **all** transcripts that belong to that assembly:
-     Pass 1 — collect ``(transcript_id → gene_id)`` for the full set.
-     Pass 2 — collect ``(gene_id → chrom/start/end/strand)`` for all
-               discovered gene_ids.
-   This replaces ``2 × N`` per-transcript scans with ``2 × A`` scans
-   (A = number of unique assemblies, A ≪ N).
-6. **Gene ID fallback** for transcripts still unresolved after Step 5:
-     6a — transcript not found in GTF, but assembly already downloaded:
-          scan the existing GTF by NCBI Gene ID (``db_xref "GeneID:…"``)
-          rather than transcript ID.
-     6b — no assembly could be found in Steps 1–2: use Gene IDs to
-          identify the current assembly via ``elink gene→assembly``
-          (batched, from ``ncbi_entrez_utils``), download the GTF, then
-          scan by Gene ID.
-   Rows resolved here carry ``is_ambiguous=True`` because coordinates come
-   from the gene feature rather than a direct transcript match.
-7. Build resolved / unresolved TSVs.
+Phase 1 — Assembly resolution  (all NCBI API calls, no file I/O)
+
+  Step 1. ``efetch(db="nucleotide", rettype="gb")`` per transcript to get its
+          GenBank record → extract parent genomic accession (NC_/NT_/NW_/AC_)
+          and NCBI Gene IDs (``/db_xref="GeneID:…"``).
+  Step 2. ``efetch(db="nucleotide", rettype="gb")`` per unique genomic
+          accession → extract assembly accession from dbxrefs and Gene IDs.
+  Step 3. For transcripts still lacking an assembly after Steps 1–2, use
+          stored Gene IDs:
+            A. Batch ``elink gene→assembly`` to get assembly UIDs.
+            B. Batch ``esummary(assembly)`` to convert UIDs → accessions.
+            C. For genes with no elink hit, try ``fetch_assembly_from_nuccore``
+               using the genomic scaffold already retrieved in Step 2.
+          No ``batch_fetch_gene_info`` call — scaffold already known from
+          tracking; this avoids large XML downloads for discontinued genes.
+
+Phase 2 — GTF acquisition  (unified download pass)
+
+  Step 4. Resolve FTP paths for ALL assemblies (Steps 1–3) in one batched
+          ``esummary`` call via ``resolve_assembly_ftp``.
+  Step 5. Download all assembly GTFs; cache under
+          ``resources/cache/<assembly_accession>/genomic.gtf.gz``.
+
+Phase 3 — GTF search  (no API calls)
+
+  Step 6. For each assembly, scan its GTF twice:
+            Strategy A — ``extract_all_from_gtf``: match by transcript ID
+                          → ``is_ambiguous=False``.
+            Strategy B — ``extract_annotations_by_geneid``: for transcripts
+                          not found in Strategy A, scan by Gene ID
+                          → ``is_ambiguous=True``.
+
+Phase 4 — Report
+
+  Write resolved TSV, unresolved TSV, and a detailed debug TSV.
 
 Input
 -----
@@ -55,7 +59,8 @@ Usage
 -----
 Runs under Snakemake OR standalone via argparse:
   snakemake resolve_abandoned_accessions  (Snakemake mode)
-  python resolve_abandoned_accessions.py --input <tsv> --output-resolved <tsv> --output-unresolved <tsv> --config <yaml> ...  (CLI mode)
+  python resolve_abandoned_accessions.py --input <tsv> --output-resolved <tsv> \
+      --output-unresolved <tsv> --config <yaml> ...  (CLI mode)
 """
 
 import argparse
@@ -65,6 +70,7 @@ import re
 import sys
 import time
 import urllib.request
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -77,7 +83,6 @@ from Bio import Entrez
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
 from ncbi_entrez_utils import (
-    batch_fetch_gene_info,
     batch_link_genes_to_assemblies,
     resolve_assembly_uids_map,
     fetch_assembly_from_nuccore,
@@ -303,7 +308,10 @@ def fetch_genomic_accessions(accessions: list[str]) -> tuple[dict[str, str], dic
             handle = Entrez.efetch(
                 db="nucleotide", id=ids, rettype="gb", retmode="text"
             )
-            return SeqIO.parse(handle, "genbank")
+            data = handle.read()
+            handle.close()
+            from io import StringIO
+            return list(SeqIO.parse(StringIO(data), "genbank"))
 
         try:
             gb_records = _retry(_fetch, f"efetch(nucleotide) batch [{batch[0]}...{batch[-1]}]")
@@ -356,14 +364,17 @@ def fetch_assembly_accessions(genomic_accs: list[str]) -> tuple[dict[str, str], 
         batch = unique[batch_start:batch_end]
         batch_ids = ",".join(batch)
 
-        if batch_end % 20 == 0 or batch_end == total:
+        if batch_end % EFETCH_BATCH_SIZE == 0 or batch_end == total:
             log.info(f"  Step 2: {batch_end}/{total} genomic records fetched (batch {batch_start // EFETCH_BATCH_SIZE + 1})")
 
         def _fetch(ids=batch_ids):
             handle = Entrez.efetch(
                 db="nucleotide", id=ids, rettype="gb", retmode="text"
             )
-            return SeqIO.parse(handle, "genbank")
+            data = handle.read()
+            handle.close()
+            from io import StringIO
+            return list(SeqIO.parse(StringIO(data), "genbank"))
 
         try:
             gb_records = _retry(_fetch, f"efetch(nucleotide/genomic) batch [{batch[0]}...{batch[-1]}]")
@@ -742,9 +753,29 @@ def extract_annotations_by_geneid(
     return result
 
 
+# ── Helper: collect Gene IDs for a transcript from tracking dicts ─────────────
+
+def _collect_geneids_for_tx(acc: str) -> list[str]:
+    """Return deduplicated Gene ID list from all_tracking for *acc*.
+
+    Prefers Gene IDs extracted from the parent genomic record (more reliable)
+    and supplements with those from the transcript record itself.
+    """
+    gids: set[str] = set()
+    s = all_tracking.get(acc, {}).get("transcript_geneids", "")
+    if s:
+        gids.update(g.strip() for g in s.split(";") if g.strip())
+    gacc = acc_to_genomic.get(acc)
+    if gacc:
+        s = all_tracking.get(gacc, {}).get("genomic_geneids", "")
+        if s:
+            gids.update(g.strip() for g in s.split(";") if g.strip())
+    return list(gids)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-log.info("resolve_abandoned_accessions: GTF-based third-pass resolver (batch mode)")
+log.info("resolve_abandoned_accessions: GTF-based third-pass resolver (4-phase)")
 
 df_in = pd.read_csv(input_unresolved, sep="\t")
 df_work = df_in[
@@ -761,28 +792,31 @@ if df_work.empty:
 accessions: list[str] = df_work["transcript_id"].tolist()
 log.info(f"Processing {len(accessions)} withdrawn/suppressed accessions")
 
-# Tracking data for debug output
+# Tracking data for debug output (populated in Phase 1 Steps 1 & 2)
 all_tracking: dict[str, dict] = {}
 
-# ── Step 1: efetch each transcript → genomic accession ──────────────────────
-log.info("Step 1: efetch each transcript GenBank record → extract genomic accession …")
-log.info(f"  (This makes {len(accessions)} individual API calls — one per transcript)")
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 1 — Assembly resolution  (all NCBI API calls, no file I/O)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Phase 1 / Step 1: transcript → genomic accession ─────────────────────────
+log.info("Phase 1 / Step 1: efetch transcript GenBank records → genomic accession …")
 acc_to_genomic, tx_tracking = fetch_genomic_accessions(accessions)
 all_tracking.update(tx_tracking)
 log.info(f"  Genomic accessions found: {len(acc_to_genomic)}/{len(accessions)}")
 
-# ── Step 2: efetch each unique genomic record → assembly accession ───────────
+# ── Phase 1 / Step 2: genomic record → assembly accession ────────────────────
 unique_genomic = list(dict.fromkeys(acc_to_genomic.values()))
 log.info(
-    f"Step 2: efetch {len(unique_genomic)} unique genomic records → extract assembly accession …"
+    f"Phase 1 / Step 2: efetch {len(unique_genomic)} unique genomic records "
+    f"→ assembly accession …"
 )
 genomic_to_assembly, genomic_tracking = fetch_assembly_accessions(unique_genomic)
 all_tracking.update(genomic_tracking)
 log.info(f"  Assembly accessions found: {len(genomic_to_assembly)}/{len(unique_genomic)}")
 
-# Map each transcript → assembly (via genomic)
+# Build transcript → assembly map from Steps 1+2
 acc_to_assembly: dict[str, str] = {}
-acc_to_organism: dict[str, str] = {}
 for acc in accessions:
     gacc = acc_to_genomic.get(acc)
     if gacc:
@@ -792,17 +826,136 @@ for acc in accessions:
 
 log.info(f"  Transcripts with assembly accession: {len(acc_to_assembly)}/{len(accessions)}")
 
-# ── Step 3: Resolve FTP paths for unique assemblies (batched esummary) ───────
-unique_assemblies = list(set(acc_to_assembly.values()))
+# ── Phase 1 / Step 3: Gene ID → assembly for transcripts still missing one ───
+#
+# Collect Gene IDs from tracking (transcript + genomic scaffold records).
+# Strategy: batch elink gene→assembly, then batch esummary UIDs→accessions;
+# for genes with no elink hit, fall back to fetch_assembly_from_nuccore using
+# the genomic scaffold already retrieved in Step 2.
+# NOTE: batch_fetch_gene_info is intentionally NOT called here — the scaffold
+# is already known from tracking; calling it would trigger large XML downloads
+# for discontinued genes and cause hangs.
+
+acc_to_geneids: dict[str, list[str]] = {}
+gid_to_accs:    dict[str, list[str]] = {}
+for acc in accessions:
+    if acc not in acc_to_assembly:
+        gids = _collect_geneids_for_tx(acc)
+        if gids:
+            acc_to_geneids[acc] = gids
+            for gid in gids:
+                gid_to_accs.setdefault(gid, []).append(acc)
+
+all_unresolved_gids = list(gid_to_accs.keys())
+n_no_gid = len(accessions) - len(acc_to_assembly) - len(acc_to_geneids)
 log.info(
-    f"Step 3: Resolving FTP paths for {len(unique_assemblies)} unique assemblies "
-    f"(batched esummary) …"
+    f"Phase 1 / Step 3: elink gene→assembly for {len(all_unresolved_gids)} unique Gene ID(s) "
+    f"({len(acc_to_geneids)} transcripts without assembly, {n_no_gid} with no Gene ID) …"
+)
+
+gene_to_asm: dict[str, str] = {}
+if all_unresolved_gids:
+    # Phase A: batch elink gene → assembly UIDs
+    log.info(
+        f"  Phase A: elink gene→assembly for {len(all_unresolved_gids)} gene ID(s) …"
+    )
+    gene_asm_link = batch_link_genes_to_assemblies(all_unresolved_gids, RATE_LIMIT_DELAY)
+    n_linked = sum(1 for uids in gene_asm_link.values() if uids)
+    log.info(
+        f"  Phase A done: {n_linked}/{len(all_unresolved_gids)} gene(s) linked to ≥1 assembly UID"
+    )
+
+    # Phase B: batch esummary UIDs → assembly accessions
+    all_asm_uids = [uid for uids in gene_asm_link.values() for uid in uids]
+    n_unique_uids = len(set(all_asm_uids))
+    log.info(
+        f"  Phase B: esummary for {n_unique_uids} unique assembly UID(s) …"
+    )
+    asm_uid_map  = resolve_assembly_uids_map(all_asm_uids, RATE_LIMIT_DELAY) if all_asm_uids else {}
+    log.info(f"  Phase B done: {len(asm_uid_map)} assembly UID(s) resolved")
+
+    for gid, uids in gene_asm_link.items():
+        if uids:
+            asm_info = asm_uid_map.get(uids[0], {})
+            asm_acc  = asm_info.get("assembly_accession", "")
+            if asm_acc and asm_acc != "N/A":
+                gene_to_asm[gid] = asm_acc
+
+    log.info(
+        f"  After Phases A+B: {len(gene_to_asm)}/{len(all_unresolved_gids)} gene(s) → assembly"
+    )
+
+    # Phase C: scaffold fallback for genes with no elink result
+    gids_no_elink = [gid for gid in all_unresolved_gids if gid not in gene_to_asm]
+    if gids_no_elink:
+        # Collect ALL unique scaffolds upfront across every unlinked gene, then
+        # fetch each scaffold exactly once (success or failure).  The previous
+        # approach only cached successes in scaffold_to_asm, so a scaffold that
+        # returned empty was retried for every other gene ID mapping to the same
+        # transcript — multiplying API calls for discontinued scaffolds.
+        _SCAFFOLD_PREFIXES_C = ("NC_", "NT_", "NW_", "NZ_")
+        unique_scaffolds: list[str] = list(dict.fromkeys(
+            scaffold
+            for gid in gids_no_elink
+            for acc in gid_to_accs.get(gid, [])
+            for scaffold in [acc_to_genomic.get(acc, "")]
+            if scaffold and scaffold.startswith(_SCAFFOLD_PREFIXES_C)
+        ))
+        n_no_scaffold = len(gids_no_elink) - len(unique_scaffolds)
+        log.info(
+            f"  Phase C: nuccore fallback for {len(unique_scaffolds)} unique scaffold(s) "
+            f"({len(gids_no_elink)} unlinked gene(s); {n_no_scaffold} have no scaffold) …"
+        )
+        scaffold_to_asm: dict[str, str] = {}
+        for i, scaffold in enumerate(unique_scaffolds, 1):
+            asm_data = fetch_assembly_from_nuccore(scaffold, RATE_LIMIT_DELAY)
+            asm_acc  = asm_data.get("assembly_accession", "")
+            if asm_acc and asm_acc not in ("N/A", ""):
+                scaffold_to_asm[scaffold] = asm_acc
+                log.info(f"  [{i}/{len(unique_scaffolds)}] {scaffold} → {asm_acc}")
+            else:
+                log.info(
+                    f"  [{i}/{len(unique_scaffolds)}] {scaffold} → not found"
+                    + (f" ({asm_data['error']})" if asm_data.get("error") else "")
+                )
+        log.info(
+            f"  Phase C done: {len(scaffold_to_asm)}/{len(unique_scaffolds)} scaffold(s) resolved"
+        )
+        for gid in gids_no_elink:
+            for acc in gid_to_accs.get(gid, []):
+                scaffold = acc_to_genomic.get(acc, "")
+                if scaffold and scaffold in scaffold_to_asm:
+                    gene_to_asm[gid] = scaffold_to_asm[scaffold]
+                    break
+
+    log.info(
+        f"  Gene IDs resolved to assembly: {len(gene_to_asm)}/{len(all_unresolved_gids)}"
+    )
+
+    # Map each transcript → assembly via its Gene IDs (first match wins)
+    for acc, gids in acc_to_geneids.items():
+        for gid in gids:
+            asm_acc = gene_to_asm.get(gid)
+            if asm_acc:
+                acc_to_assembly[acc] = asm_acc
+                break
+
+log.info(
+    f"  Total transcripts with assembly after Step 3: {len(acc_to_assembly)}/{len(accessions)}"
+)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 2 — GTF acquisition  (unified download pass — all assemblies at once)
+# ══════════════════════════════════════════════════════════════════════════════
+
+unique_assemblies = list(dict.fromkeys(acc_to_assembly.values()))
+log.info(
+    f"Phase 2 / Step 4: Resolving FTP paths for {len(unique_assemblies)} unique assemblies …"
 )
 ftp_map = resolve_assembly_ftp(unique_assemblies)
 log.info(f"  FTP paths resolved: {len(ftp_map)}/{len(unique_assemblies)}")
 
-# ── Step 4: Download GTFs ─────────────────────────────────────────────────────
-log.info("Step 4: Downloading assembly GTFs …")
+log.info("Phase 2 / Step 5: Downloading assembly GTFs …")
 gtf_paths: dict[str, Path] = {}
 for asm in unique_assemblies:
     if asm not in ftp_map:
@@ -814,27 +967,56 @@ for asm in unique_assemblies:
 
 log.info(f"  GTFs available: {len(gtf_paths)}/{len(unique_assemblies)}")
 
-# ── Step 5: Batch GTF extraction — 2 passes per assembly, not per transcript ─
-log.info("Step 5: Extracting gene annotations from GTFs (batch mode) …")
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 3 — GTF search  (no API calls)
+# ══════════════════════════════════════════════════════════════════════════════
 
-# Group transcripts by their assembly so each GTF is scanned only once
-from collections import defaultdict
+# ── Phase 3 / Step 6: GTF search — Strategy A (transcript ID), then B (Gene ID)
+log.info("Phase 3 / Step 6: Scanning GTFs for transcript annotations …")
+
+# Group transcripts by assembly so each GTF is scanned only once
 asm_to_transcripts: dict[str, set[str]] = defaultdict(set)
 for acc in accessions:
     asm = acc_to_assembly.get(acc)
     if asm and asm in gtf_paths:
         asm_to_transcripts[asm].add(acc)
 
-# One extract call per assembly
-gtf_annotations: dict[str, dict] = {}  # transcript_id → annotation dict
+# Strategy A: scan by transcript ID
+gtf_annotations: dict[str, dict] = {}
 for asm, tx_set in asm_to_transcripts.items():
     gtf_gz = gtf_paths[asm]
-    log.info(f"  Scanning {gtf_gz.name} for {len(tx_set)} transcripts …")
-    annotations = extract_all_from_gtf(gtf_gz, tx_set)
-    gtf_annotations.update(annotations)
-    log.info(f"  → {len(annotations)}/{len(tx_set)} transcripts annotated")
+    log.info(f"  [Strategy A] {asm}: scanning for {len(tx_set)} transcript(s) …")
+    ann = extract_all_from_gtf(gtf_gz, tx_set)
+    gtf_annotations.update(ann)
+    log.info(f"  → {len(ann)}/{len(tx_set)} found")
 
-# ── Build resolved / unresolved rows ─────────────────────────────────────────
+# Strategy B: Gene ID scan for transcripts not found by Strategy A
+asm_to_gid_tx: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+for acc in accessions:
+    if acc in gtf_annotations:
+        continue
+    asm = acc_to_assembly.get(acc)
+    if not asm or asm not in gtf_paths:
+        continue
+    for gid in _collect_geneids_for_tx(acc):
+        asm_to_gid_tx[asm][gid].append(acc)
+
+gtf_annotations_geneid: dict[str, dict] = {}
+for asm, gid_tx_map in asm_to_gid_tx.items():
+    gtf_gz = gtf_paths[asm]
+    n_tx = sum(len(v) for v in gid_tx_map.values())
+    log.info(
+        f"  [Strategy B] {asm}: scanning by Gene ID "
+        f"({len(gid_tx_map)} gene(s), {n_tx} transcript(s)) …"
+    )
+    ann = extract_annotations_by_geneid(gtf_gz, gid_tx_map)
+    gtf_annotations_geneid.update(ann)
+    log.info(f"  → {len(ann)}/{n_tx} found")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 4 — Report
+# ══════════════════════════════════════════════════════════════════════════════
+
 resolved_rows: list[dict] = []
 unresolved_rows: list[dict] = []
 
@@ -852,273 +1034,109 @@ for acc in accessions:
         )
         continue
 
+    organism = ftp_map.get(asm, {}).get("organism", "")
+
+    # Strategy A — transcript-level match
     annotation = gtf_annotations.get(acc)
-    if annotation is None:
-        unresolved_rows.append(
-            {"transcript_id": acc, "db_source": "ncbi", "reason": "not_found_in_gtf"}
+    if annotation:
+        resolved_rows.append(
+            {
+                "transcript_id":      acc,
+                "db_source":          "ncbi",
+                "gene_id":            annotation["gene_id"],
+                "gene_symbol":        annotation["gene_symbol"],
+                "organism":           organism,
+                "assembly_accession": asm,
+                "chrom":              annotation["chrom"],
+                "start":              annotation["start"],
+                "end":                annotation["end"],
+                "strand":             annotation["strand"],
+                "is_ambiguous":       False,
+            }
         )
         continue
 
-    organism = ftp_map.get(asm, {}).get("organism", "") or acc_to_organism.get(acc, "")
-    resolved_rows.append(
-        {
-            "transcript_id":      acc,
-            "db_source":          "ncbi",
-            "gene_id":            annotation["gene_id"],
-            "gene_symbol":        annotation["gene_symbol"],
-            "organism":           organism,
-            "assembly_accession": asm,
-            "chrom":              annotation["chrom"],
-            "start":              annotation["start"],
-            "end":                annotation["end"],
-            "strand":             annotation["strand"],
-            "is_ambiguous":       False,
-        }
-    )
-# ── Step 6: Gene ID fallback for transcripts still unresolved ────────────────
-#
-# Two sub-cases:
-#   6a — transcript not found in GTF but assembly/GTF already downloaded:
-#        scan the existing GTF by Gene ID instead of transcript ID.
-#   6b — no assembly found at all: use Gene IDs to identify the assembly,
-#        download its GTF, then scan by Gene ID.
-#
-# Gene IDs are collected from tracking data populated in Steps 1 & 2:
-#   transcript_geneids  — extracted from the withdrawn transcript's GB record
-#   genomic_geneids     — extracted from the parent genomic scaffold record
-
-log.info("Step 6: Gene ID fallback for remaining unresolved transcripts …")
-
-
-def _collect_geneids_for_tx(acc: str) -> list[str]:
-    """Return deduplicated Gene ID list for a transcript from all_tracking."""
-    gids: set[str] = set()
-    tx_track = all_tracking.get(acc, {})
-    for key in ("transcript_geneids",):
-        s = tx_track.get(key, "")
-        if s:
-            gids.update(g.strip() for g in s.split(";") if g.strip())
-    gacc = acc_to_genomic.get(acc)
-    if gacc:
-        gen_track = all_tracking.get(gacc, {})
-        s = gen_track.get("genomic_geneids", "")
-        if s:
-            gids.update(g.strip() for g in s.split(";") if g.strip())
-    return list(gids)
-
-
-# Partition still-unresolved rows by whether a GTF is already available
-still_unresolved_with_gtf: list[tuple[str, list[str], str]] = []  # (acc, gids, asm)
-still_unresolved_no_asm:   list[tuple[str, list[str]]]      = []  # (acc, gids)
-
-for row in unresolved_rows:
-    acc    = row["transcript_id"]
-    reason = row["reason"]
-    gids   = _collect_geneids_for_tx(acc)
-    if not gids:
-        continue  # no Gene ID available — cannot use this fallback
-    asm = acc_to_assembly.get(acc)
-    if reason == "not_found_in_gtf" and asm and asm in gtf_paths:
-        still_unresolved_with_gtf.append((acc, gids, asm))
-    elif reason in ("no_assembly_found", "gtf_download_failed"):
-        still_unresolved_no_asm.append((acc, gids))
-
-log.info(
-    f"  Step 6a candidates (GTF available, tx not found): {len(still_unresolved_with_gtf)}"
-)
-log.info(
-    f"  Step 6b candidates (no assembly yet):              {len(still_unresolved_no_asm)}"
-)
-
-# ─ Step 6a: Gene ID scan on already-downloaded GTFs ─────────────────────────
-fb_annotations_6a: dict[str, dict] = {}
-
-if still_unresolved_with_gtf:
-    asm_to_gid_tx_6a: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
-    for acc, gids, asm in still_unresolved_with_gtf:
-        for gid in gids:
-            asm_to_gid_tx_6a[asm][gid].append(acc)
-
-    for asm, gid_tx_map in asm_to_gid_tx_6a.items():
-        gtf_gz = gtf_paths[asm]
-        n_tx = sum(len(v) for v in gid_tx_map.values())
-        log.info(
-            f"  Step 6a: scanning {gtf_gz.name} by Gene ID "
-            f"({len(gid_tx_map)} gene(s), {n_tx} transcript(s)) …"
+    # Strategy B — Gene ID match
+    annotation = gtf_annotations_geneid.get(acc)
+    if annotation:
+        resolved_rows.append(
+            {
+                "transcript_id":      acc,
+                "db_source":          "ncbi",
+                "gene_id":            annotation["gene_id"],
+                "gene_symbol":        annotation["gene_symbol"],
+                "organism":           organism,
+                "assembly_accession": asm,
+                "chrom":              annotation["chrom"],
+                "start":              annotation["start"],
+                "end":                annotation["end"],
+                "strand":             annotation["strand"],
+                "is_ambiguous":       True,  # resolved via Gene ID, not transcript
+            }
         )
-        ann = extract_annotations_by_geneid(gtf_gz, gid_tx_map)
-        fb_annotations_6a.update(ann)
-        log.info(f"  → {len(ann)}/{n_tx} transcript(s) annotated")
-
-# ─ Step 6b: Gene IDs → assembly → download GTF → scan ───────────────────────
-fb_annotations_6b: dict[str, dict] = {}
-tx_to_gid_asm_6b:  dict[str, tuple[str, str]] = {}  # acc → (gid, asm_acc)
-
-if still_unresolved_no_asm:
-    all_gene_ids_6b = list(
-        {gid for _acc, gids in still_unresolved_no_asm for gid in gids}
-    )
-    log.info(
-        f"  Step 6b: resolving {len(all_gene_ids_6b)} unique Gene ID(s) → assemblies …"
-    )
-
-    # Phase A: batch gene info + elink gene → assembly
-    gene_info_map_6b  = batch_fetch_gene_info(all_gene_ids_6b, RATE_LIMIT_DELAY)
-    gene_asm_link_6b  = batch_link_genes_to_assemblies(all_gene_ids_6b, RATE_LIMIT_DELAY)
-
-    # Phase B: assembly UIDs → accessions
-    all_asm_uids_6b = [uid for uids in gene_asm_link_6b.values() for uid in uids]
-    asm_uid_map_6b  = resolve_assembly_uids_map(all_asm_uids_6b, RATE_LIMIT_DELAY) if all_asm_uids_6b else {}
-
-    # Phase C: build gene_id → assembly_accession (with nuccore scaffold fallback)
-    gene_to_asm_6b: dict[str, str] = {}
-    for gid in all_gene_ids_6b:
-        asm_uids = gene_asm_link_6b.get(gid, [])
-        if asm_uids:
-            asm_info = asm_uid_map_6b.get(asm_uids[0], {})
-            asm_acc  = asm_info.get("assembly_accession", "")
-            if asm_acc and asm_acc != "N/A":
-                gene_to_asm_6b[gid] = asm_acc
-        if gid not in gene_to_asm_6b:
-            scaffold = gene_info_map_6b.get(gid, {}).get("scaffold_acc", "")
-            if scaffold:
-                asm_data = fetch_assembly_from_nuccore(scaffold, RATE_LIMIT_DELAY)
-                asm_acc  = asm_data.get("assembly_accession", "")
-                if asm_acc and asm_acc not in ("N/A", ""):
-                    gene_to_asm_6b[gid] = asm_acc
-
-    log.info(
-        f"  Step 6b: assembly resolved for {len(gene_to_asm_6b)}/{len(all_gene_ids_6b)} gene(s)"
-    )
-
-    # Map each transcript to the first Gene ID with a resolved assembly
-    for acc, gids in still_unresolved_no_asm:
-        for gid in gids:
-            asm_acc = gene_to_asm_6b.get(gid)
-            if asm_acc:
-                tx_to_gid_asm_6b[acc] = (gid, asm_acc)
-                break
-
-    # Resolve FTP paths for assemblies not yet in ftp_map
-    new_asms_6b = list({asm for _, asm in tx_to_gid_asm_6b.values()} - set(ftp_map.keys()))
-    if new_asms_6b:
-        log.info(f"  Step 6b: resolving FTP paths for {len(new_asms_6b)} new assembly(ies) …")
-        ftp_map.update(resolve_assembly_ftp(new_asms_6b))
-
-    # Download any new GTFs
-    for _acc, (gid, asm_acc) in tx_to_gid_asm_6b.items():
-        if asm_acc not in gtf_paths and asm_acc in ftp_map:
-            path = download_gtf(asm_acc, ftp_map[asm_acc]["urls"])
-            if path:
-                gtf_paths[asm_acc] = path
-
-    # Scan GTFs by Gene ID (group by assembly to avoid redundant scans)
-    asm_to_gid_tx_6b: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
-    for acc, (gid, asm_acc) in tx_to_gid_asm_6b.items():
-        if asm_acc in gtf_paths:
-            asm_to_gid_tx_6b[asm_acc][gid].append(acc)
-
-    for asm_acc, gid_tx_map in asm_to_gid_tx_6b.items():
-        gtf_gz = gtf_paths[asm_acc]
-        n_tx = sum(len(v) for v in gid_tx_map.values())
-        log.info(
-            f"  Step 6b: scanning {gtf_gz.name} by Gene ID "
-            f"({len(gid_tx_map)} gene(s), {n_tx} transcript(s)) …"
-        )
-        ann = extract_annotations_by_geneid(gtf_gz, gid_tx_map)
-        fb_annotations_6b.update(ann)
-        log.info(f"  → {len(ann)}/{n_tx} transcript(s) annotated")
-
-# ─ Merge Step 6 fallback results into resolved/unresolved lists ──────────────
-fb_annotations = {**fb_annotations_6a, **fb_annotations_6b}
-
-# Build a combined acc → (gid, asm_acc) lookup for Step 6 hits
-tx_to_gid_asm_all: dict[str, tuple[str, str]] = {}
-for acc, gids, asm in still_unresolved_with_gtf:
-    tx_to_gid_asm_all[acc] = (gids[0] if gids else "", asm)
-tx_to_gid_asm_all.update(tx_to_gid_asm_6b)
-
-new_unresolved_rows: list[dict] = []
-for row in unresolved_rows:
-    acc        = row["transcript_id"]
-    annotation = fb_annotations.get(acc)
-    if annotation is None:
-        new_unresolved_rows.append(row)
         continue
-    gid_asm  = tx_to_gid_asm_all.get(acc)
-    asm_acc  = gid_asm[1] if gid_asm else (acc_to_assembly.get(acc) or "")
-    organism = ftp_map.get(asm_acc, {}).get("organism", "")
-    resolved_rows.append(
-        {
-            "transcript_id":      acc,
-            "db_source":          "ncbi",
-            "gene_id":            annotation["gene_id"],
-            "gene_symbol":        annotation["gene_symbol"],
-            "organism":           organism,
-            "assembly_accession": asm_acc,
-            "chrom":              annotation["chrom"],
-            "start":              annotation["start"],
-            "end":                annotation["end"],
-            "strand":             annotation["strand"],
-            "is_ambiguous":       True,   # resolved via Gene ID, not transcript
-        }
+
+    unresolved_rows.append(
+        {"transcript_id": acc, "db_source": "ncbi", "reason": "not_found_in_gtf"}
     )
 
-unresolved_rows = new_unresolved_rows
-fb_total = len(fb_annotations_6a) + len(fb_annotations_6b)
-log.info(f"  Step 6 total: {fb_total} additional transcript(s) resolved via Gene ID fallback")
+n_strat_a = sum(1 for r in resolved_rows if not r["is_ambiguous"])
+n_strat_b = sum(1 for r in resolved_rows if r["is_ambiguous"])
+log.info(
+    f"  Strategy A (transcript ID): {n_strat_a} resolved; "
+    f"Strategy B (Gene ID): {n_strat_b} resolved"
+)
+
 # ── Write outputs ─────────────────────────────────────────────────────────────
+df_resolved   = pd.DataFrame(resolved_rows,   columns=RESOLVED_COLS)
 df_unresolved = pd.DataFrame(unresolved_rows, columns=UNRESOLVED_COLS)
 
-df_resolved.to_csv(out_resolved, sep="\t", index=False)
+df_resolved.to_csv(out_resolved,   sep="\t", index=False)
 df_unresolved.to_csv(out_unresolved, sep="\t", index=False)
 
-# ── Write detailed debugging TSV with all collected metadata ──────────────────
+# ── Write detailed debugging TSV ──────────────────────────────────────────────
+resolved_set   = {r["transcript_id"] for r in resolved_rows}
+unresolved_map = {r["transcript_id"]: r["reason"] for r in unresolved_rows}
+
 debug_rows = []
 for acc in accessions:
     row = {"transcript_id": acc}
 
-    # Data from transcript record (Step 1)
+    # Data from transcript record (Phase 1 / Step 1)
     if acc in all_tracking:
         row.update({k: v for k, v in all_tracking[acc].items() if k != "transcript_id"})
 
-    # Data from genomic record (Step 2)
+    # Data from genomic record (Phase 1 / Step 2)
     genomic_acc = acc_to_genomic.get(acc)
     if genomic_acc and genomic_acc in all_tracking:
-        row.update({k: v for k, v in all_tracking[genomic_acc].items() if k != "genomic_accession"})
+        row.update(
+            {k: v for k, v in all_tracking[genomic_acc].items() if k != "genomic_accession"}
+        )
 
-    # Assembly and outcome
-    assembly_acc = acc_to_assembly.get(acc)
-    row["assembly_accession_found"] = assembly_acc or ""
-
-    # Final resolution status
-    resolution = "unresolved"
-    reason = ""
-    if acc in [r["transcript_id"] for r in resolved_rows]:
-        resolution = "resolved"
-    elif acc in [r["transcript_id"] for r in unresolved_rows]:
-        reason = next(r["reason"] for r in unresolved_rows if r["transcript_id"] == acc)
-        resolution = "unresolved"
-
-    row["resolution_status"] = resolution
-    row["unresolved_reason"] = reason
-
+    row["assembly_accession_found"] = acc_to_assembly.get(acc, "")
+    row["gene_ids"]                 = ";".join(acc_to_geneids.get(acc, []))
+    row["resolution_status"]        = "resolved" if acc in resolved_set else "unresolved"
+    row["unresolved_reason"]        = unresolved_map.get(acc, "")
+    row["resolution_strategy"]      = (
+        "transcript_id" if acc in gtf_annotations
+        else "gene_id"  if acc in gtf_annotations_geneid
+        else ""
+    )
     debug_rows.append(row)
 
-# Write debug file (output dir + _debug.tsv)
 debug_path = out_resolved.replace(".tsv", "_debug.tsv")
-if debug_rows:
-    df_debug = pd.DataFrame(debug_rows)
-    df_debug.to_csv(debug_path, sep="\t", index=False)
-    log.info(f"Written → {debug_path}")
+pd.DataFrame(debug_rows).to_csv(debug_path, sep="\t", index=False)
+log.info(f"Written → {debug_path}")
 
 log.info("=" * 60)
-log.info(f"Input accessions     : {len(accessions)}")
-log.info(f"Resolved via GTF     : {len(df_resolved)}")
-log.info(f"Still unresolved     : {len(df_unresolved)}")
+log.info(f"Input accessions          : {len(accessions)}")
+log.info(f"Resolved (transcript ID)  : {n_strat_a}")
+log.info(f"Resolved (Gene ID)        : {n_strat_b}")
+log.info(f"Still unresolved          : {len(df_unresolved)}")
 if not df_unresolved.empty:
     for reason, grp in df_unresolved.groupby("reason"):
         log.info(f"  {reason:<30}: {len(grp)}")
 log.info(f"Written → {out_resolved}")
 log.info(f"Debug TSV → {debug_path}")
 log.info("resolve_abandoned_accessions complete.")
+
