@@ -40,12 +40,12 @@ class TestUCSCNameMapping:
     def test_map_tair10_to_gcf(self):
         """Test mapping of tair10 to GCF accession."""
         result = map_ucsc_to_gcf("tair10")
-        assert result == "GCF_000001405.39"  # Arabidopsis thaliana
+        assert result == "GCF_000001735.4"  # Arabidopsis thaliana (TAIR10.1)
 
     def test_map_ce10_to_gcf(self):
         """Test mapping of ce10 to GCF accession."""
         result = map_ucsc_to_gcf("ce10")
-        assert result == "GCF_000002035.6"  # Caenorhabditis elegans
+        assert result == "GCF_000002985.6"  # Caenorhabditis elegans (WBcel235)
 
     def test_map_dm6_to_gcf(self):
         """Test mapping of dm6 to GCF accession."""
@@ -60,7 +60,7 @@ class TestUCSCNameMapping:
     def test_map_mondom5_to_gcf(self):
         """Test mapping of monDom5 to GCF accession."""
         result = map_ucsc_to_gcf("monDom5")
-        assert result == "GCF_000002305.1"  # Monodelphis domesticus
+        assert result == "GCF_000002295.2"  # Monodelphis domesticus (MonDom5)
 
     def test_map_ponabe2_to_gcf(self):
         """Test mapping of ponAbe2 to GCF accession."""
@@ -70,12 +70,12 @@ class TestUCSCNameMapping:
     def test_map_galgal4_to_gcf(self):
         """Test mapping of galGal4 to GCF accession."""
         result = map_ucsc_to_gcf("galGal4")
-        assert result == "GCF_000002305.6"  # Gallus gallus
+        assert result == "GCF_000002315.6"  # Gallus gallus (GRCg6a)
 
     def test_map_ornana1_to_gcf(self):
         """Test mapping of ornAna1 to GCF accession."""
         result = map_ucsc_to_gcf("ornAna1")
-        assert result == "GCF_000002305.1"  # Ornithorhynchus anatinus
+        assert result == "GCF_000002275.2"  # Ornithorhynchus anatinus (ASM227v2)
 
     def test_map_bostau6_to_gcf(self):
         """Test mapping of bosTau6 to GCF accession."""
@@ -85,17 +85,17 @@ class TestUCSCNameMapping:
     def test_map_danrer10_to_gcf(self):
         """Test mapping of danRer10 to GCF accession."""
         result = map_ucsc_to_gcf("danRer10")
-        assert result == "GCF_000002035.6"  # Danio rerio
+        assert result == "GCF_000002035.6"  # Danio rerio (GRCz11)
 
     def test_map_ucsc_case_insensitive(self):
         """Test mapping is case-insensitive."""
         result = map_ucsc_to_gcf("TAIR10")
-        assert result == "GCF_000001405.39"
+        assert result == "GCF_000001735.4"
 
     def test_map_ucsc_with_spaces(self):
         """Test mapping handles whitespace."""
         result = map_ucsc_to_gcf("  ce10  ")
-        assert result == "GCF_000002035.6"
+        assert result == "GCF_000002985.6"
 
     def test_map_unknown_ucsc(self):
         """Test that unknown UCSC names return None."""
@@ -183,7 +183,7 @@ class TestRowFiltering:
         resolved, _ = filter_and_resolve_noncode(df)
 
         assert len(resolved) == 1
-        assert resolved.iloc[0]["assembly_accession"] == "GCF_000002035.6"
+        assert resolved.iloc[0]["assembly_accession"] == "GCF_000002985.6"
 
     def test_filter_non_ucsc_rows_unchanged(self):
         """Test that non-UCSC rows pass through unchanged."""
@@ -224,23 +224,26 @@ class TestResolvedVsUnresolvedSplit:
 
         assert len(resolved) == 2
         assert len(unresolved) == 0
-        assert resolved.iloc[0]["assembly_accession"] == "GCF_000002035.6"
+        assert resolved.iloc[0]["assembly_accession"] == "GCF_000002985.6"
         assert resolved.iloc[1]["assembly_accession"] == "GCF_000001215.4"
 
-    def test_unmapped_ucsc_goes_to_unresolved(self):
-        """Test that unmappable UCSC-like rows go to unresolved output."""
+    def test_unmapped_ucsc_like_accession_fails_gracefully(self):
+        """Test that UCSC-format names not in mapping are rejected."""
         df = pd.DataFrame({
             "transcript_id": ["TX1"],
             "db_source": ["noncode"],
-            "assembly_accession": ["xx999"],  # Looks like UCSC but not in mapping
-            "organism": ["unknown_organism"],
+            "assembly_accession": ["xx999"],  # Not in UCSC mapping
+            "organism": ["unknown"],
         })
 
         resolved, unresolved = filter_and_resolve_noncode(df)
 
-        # Note: xx999 looks like UCSC format so it's treated as UCSC
-        # but mapping fails
-        assert len(unresolved) >= 0  # May be treated as unknown format (pass-through)
+        # xx999 is not in UCSC_TO_GCF_MAPPING, so it should pass through as-is
+        # (treated as unknown accession format, not as UCSC)
+        assert len(resolved) + len(unresolved) == 1  # All rows accounted for
+        # Row should pass through to resolved (not recognized as UCSC)
+        assert len(resolved) == 1
+        assert resolved.iloc[0]["assembly_accession"] == "xx999"
 
     def test_mixed_rows_correct_split(self):
         """Test correct splitting when mix of mappable and non-UCSC rows."""
@@ -417,16 +420,16 @@ class TestAllTenUCSCSpecies:
     def test_all_10_species_resolve(self):
         """Test that all 10 UCSC species resolve to valid GCF_ accessions."""
         test_data = [
-            ("tair10", "GCF_000001405.39"),
-            ("ce10", "GCF_000002035.6"),
-            ("dm6", "GCF_000001215.4"),
-            ("rn6", "GCF_000001895.5"),
-            ("monDom5", "GCF_000002305.1"),
-            ("ponAbe2", "GCF_000001545.5"),
-            ("galGal4", "GCF_000002305.6"),
-            ("ornAna1", "GCF_000002305.1"),
-            ("bosTau6", "GCF_000003055.6"),
-            ("danRer10", "GCF_000002035.6"),
+            ("tair10", "GCF_000001735.4"),    # Arabidopsis thaliana (TAIR10.1)
+            ("ce10", "GCF_000002985.6"),      # Caenorhabditis elegans (WBcel235)
+            ("dm6", "GCF_000001215.4"),       # Drosophila melanogaster (Release 6)
+            ("rn6", "GCF_000001895.5"),       # Rattus norvegicus (Rnor_6.0)
+            ("monDom5", "GCF_000002295.2"),   # Monodelphis domesticus (MonDom5)
+            ("ponAbe2", "GCF_000001545.5"),   # Pongo abelii (P_pygmaeus_2.0.2)
+            ("galGal4", "GCF_000002315.6"),   # Gallus gallus (GRCg6a)
+            ("ornAna1", "GCF_000002275.2"),   # Ornithorhynchus anatinus (ASM227v2)
+            ("bosTau6", "GCF_000003055.6"),   # Bos taurus (Bos_taurus_UMD_3.1.1)
+            ("danRer10", "GCF_000002035.6"),  # Danio rerio (GRCz11)
         ]
 
         for ucsc_name, expected_gcf in test_data:
