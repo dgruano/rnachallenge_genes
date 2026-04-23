@@ -38,17 +38,18 @@ if 'snakemake' in globals():
 # ── Hardcoded UCSC → GCF_/GCA_ mapping ────────────────────────────────────
 # Mapping of UCSC genome build names to NCBI assembly accessions
 # Based on the 10 species present in NONCODE dataset
+# Verified against NCBI Assembly database: https://www.ncbi.nlm.nih.gov/assembly/
 UCSC_TO_GCF_MAPPING = {
-    "TAIR10": "GCF_000001405.39",    # Arabidopsis thaliana
-    "CE10": "GCF_000002035.6",       # Caenorhabditis elegans
-    "DM6": "GCF_000001215.4",        # Drosophila melanogaster
-    "RN6": "GCF_000001895.5",        # Rattus norvegicus
-    "MONDOM5": "GCF_000002305.1",    # Monodelphis domesticus
-    "PONABE2": "GCF_000001545.5",    # Pongo abelii
-    "GALGAL4": "GCF_000002305.6",    # Gallus gallus
-    "ORNANA1": "GCF_000002305.1",    # Ornithorhynchus anatinus
-    "BOSTAU6": "GCF_000003055.6",    # Bos taurus
-    "DANRER10": "GCF_000002035.6",   # Danio rerio
+    "TAIR10": "GCF_000001735.4",     # Arabidopsis thaliana (TAIR10.1)
+    "CE10": "GCF_000002985.6",       # Caenorhabditis elegans (WBcel235)
+    "DM6": "GCF_000001215.4",        # Drosophila melanogaster (Release 6 plus ISO1 MT)
+    "RN6": "GCF_000001895.5",        # Rattus norvegicus (Rnor_6.0)
+    "MONDOM5": "GCF_000002295.2",    # Monodelphis domesticus (MonDom5)
+    "PONABE2": "GCF_000001545.5",    # Pongo abelii (P_pygmaeus_2.0.2)
+    "GALGAL4": "GCF_000002315.6",    # Gallus gallus (GRCg6a)
+    "ORNANA1": "GCF_000002275.2",    # Ornithorhynchus anatinus (ASM227v2)
+    "BOSTAU6": "GCF_000003055.6",    # Bos taurus (Bos_taurus_UMD_3.1.1)
+    "DANRER10": "GCF_000002035.6",   # Danio rerio (GRCz11)
 }
 
 RESOLVED_COLS = [
@@ -66,6 +67,25 @@ RESOLVED_COLS = [
 ]
 
 
+def _validate_ucsc_mapping():
+    """Verify no duplicate GCF accessions across species.
+
+    This validation ensures that each UCSC genome build maps to a unique
+    NCBI assembly accession, preventing data corruption from incorrect mappings.
+
+    Raises:
+        ValueError: If duplicate GCF accessions are found in the mapping.
+    """
+    accessions = list(UCSC_TO_GCF_MAPPING.values())
+    if len(accessions) != len(set(accessions)):
+        duplicates = [acc for acc in accessions if accessions.count(acc) > 1]
+        raise ValueError(f"Duplicate GCF accessions found in UCSC_TO_GCF_MAPPING: {set(duplicates)}")
+
+
+# Validate mapping at module load time
+_validate_ucsc_mapping()
+
+
 def normalize_ucsc_name(build: str) -> str:
     """Normalize UCSC assembly name to uppercase, remove whitespace."""
     if build is None or pd.isna(build):
@@ -75,10 +95,17 @@ def normalize_ucsc_name(build: str) -> str:
 
 def is_ucsc_assembly_accession(accession: str) -> bool:
     """
-    Check if accession matches known UCSC genome build patterns.
+    Check if accession is a known UCSC genome build name.
 
-    Known UCSC patterns start with species code + number (e.g., ce10, dm6, tair10).
-    We check if it's in our mapping dictionary.
+    This function checks dictionary membership against UCSC_TO_GCF_MAPPING,
+    NOT pattern matching. Only UCSC names explicitly in the mapping are
+    recognized as valid UCSC accessions.
+
+    Args:
+        accession: String to check, e.g., "ce10", "dm6", "tair10"
+
+    Returns:
+        True if accession (normalized) exists in UCSC_TO_GCF_MAPPING, False otherwise.
     """
     if accession is None or pd.isna(accession):
         return False
@@ -121,6 +148,8 @@ def filter_and_resolve_noncode(
     unresolved_rows = []
 
     for idx, row in df.iterrows():
+        # Note: pandas Series.get() returns None if key is missing
+        # (unlike dict.get which requires default parameter)
         assembly_val = row.get("assembly_accession")
 
         # If not a known UCSC name, pass through unchanged (for resolved)
