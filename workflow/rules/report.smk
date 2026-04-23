@@ -1,4 +1,50 @@
 # ============================================================
+# Rule: resolution_report
+# Intermediate report — resolution stage only.
+# Does not require downloaded assemblies or extracted sequences.
+# Run with:  snakemake results/resolution_report.html
+# ============================================================
+rule resolution_report:
+    input:
+        classified       = f"{RESULTS}/classified_ids.tsv",
+        resolved         = f"{RESULTS}/resolved_ids.tsv",
+        unresolved       = f"{RESULTS}/unresolved.tsv",
+        ambiguous        = f"{RESULTS}/ambiguous.tsv",
+        species_map      = f"{RESULTS}/ensembl_species_map.tsv",
+        unknown_prefixes = f"{RESULTS}/ensembl_unknown_prefixes.tsv",
+        benchmarks       = expand(
+            f"{BENCHMARKS}/{{rule}}.tsv",
+            rule=[
+                "parse_ids",
+                "detect_ensembl_species",
+                "resolve_ids",
+                "resolve_external_ids",
+                "biomart_plant_batch",
+                "gramene_resolver",
+                "join_ensembl_results",
+                "merge_resolved",
+            ]
+        ),
+    output:
+        html = f"{RESULTS}/resolution_report.html",
+    log:
+        f"{LOGS}/resolution_report.log",
+    benchmark:
+        f"{BENCHMARKS}/resolution_report.tsv",
+    params:
+        upstream   = config["upstream_bp"],
+        downstream = config["downstream_bp"],
+        release    = config["ensembl_release"],
+    resources:
+        slurm_partition = "compute",
+        runtime         = 30,
+        mem_mb          = 2048,
+        cpus_per_task   = 1,
+    script:
+        "../scripts/generate_resolution_report.py"
+
+
+# ============================================================
 # Rule: report
 # ============================================================
 rule report:

@@ -45,20 +45,22 @@ if "snakemake" in dir():
     output_file = snakemake.output.table
     max_retries = int(snakemake.config.get("max_retries", 3))
     retry_wait = int(snakemake.config.get("retry_wait_seconds", 5))
+    on_failure = snakemake.config.get("biomart_on_failure", "fail")
 else:
     # Running standalone
     if len(sys.argv) < 4:
         print("Usage: biomart_download.py <species> <release> <output_file> [log_file]")
         print("Example: biomart_download.py homo_sapiens 115 out.tsv.gz")
         sys.exit(1)
-    
+
     species = sys.argv[1]
     release = sys.argv[2]
     output_file = sys.argv[3]
     log_file = sys.argv[4] if len(sys.argv) > 4 else None
     max_retries = 3
     retry_wait = 5
-    
+    on_failure = "fail"
+
     log = get_logger("biomart_download", log_file)
 
 # ── Ensembl BioMart configuration ──────────────────────────────
@@ -318,13 +320,21 @@ def main():
     try:
         df = query_biomart(dataset, BIOMART_ATTRIBUTES, max_retries, retry_wait)
     except Exception as exc:
-        log.error(f"BioMart download failed: {exc}")
-        raise
-    
+        if on_failure == "warn_continue":
+            log.warning(f"BioMart query failed (development mode): {exc}")
+            log.warning(f"Creating empty placeholder output for {species}")
+            df = pd.DataFrame(columns=BIOMART_ATTRIBUTES)
+        else:
+            log.error(f"BioMart download failed: {exc}")
+            raise
+
     # Validate results
     if df.empty:
-        log.error("BioMart query returned no data")
-        raise RuntimeError("BioMart query returned no data")
+        if on_failure == "warn_continue":
+            log.warning("BioMart query returned no data (development mode: continuing with empty output)")
+        else:
+            log.error("BioMart query returned no data")
+            raise RuntimeError("BioMart query returned no data")
     
     log.info(f"Fetched {len(df)} transcripts for {species}")
     

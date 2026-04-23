@@ -41,7 +41,12 @@ cache_dir: "resources/cache"
 # --- API settings (NCBI + UCSC) ---
 max_retries: 3
 retry_wait_seconds: 5
-ncbi_batch_size: 50
+ncbi_batch_size: 200  # NCBI recommends < 500
+
+# --- BioMart failure handling ---
+# "fail": Raise error and stop pipeline (default, production behavior)
+# "warn_continue": Log warning and produce empty output (development mode)
+biomart_on_failure: "warn_continue"
 
 # --- External ID resolution ---
 # Use common Ensembl REST endpoint for all species (plants subdomain is frequently down).

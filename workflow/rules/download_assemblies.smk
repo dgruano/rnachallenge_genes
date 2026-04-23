@@ -14,8 +14,9 @@
 # Cache layout:
 #   resources/cache/
 #     <assembly_accession>/
-#       genomic.gtf.gz
-#       genomic.gtf.gz.tbi
+#       genomic.fna.gz          # Downloaded NCBI FASTA
+#       genome.fasta            # Decompressed FASTA
+#       genome.fasta.fai        # Index (via samtools faidx)
 #
 # Output:
 #   results/downloaded_assemblies.tsv - successfully downloaded

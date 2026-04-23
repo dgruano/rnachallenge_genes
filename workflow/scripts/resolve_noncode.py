@@ -128,6 +128,12 @@ log.info(f"  Transcript2Gene entries: {len(t2g):,}")
 # Maps: bed_assembly → dict[transcript_id → (chrom, start_1based, end, strand)]
 BedCoords = tuple[str, int, int, str]
 bed_cache: dict[str, dict[str, BedCoords]] = {}
+bed_base_cache: dict[str, dict[str, BedCoords]] = {}
+
+
+def _strip_version(tid: str) -> str:
+    """Strip trailing .N version suffix, e.g. NONDMET034404.2 → NONDMET034404"""
+    return tid.rsplit(".", 1)[0] if "." in tid else tid
 
 
 def _load_bed(bed_asm: str) -> dict[str, BedCoords]:
@@ -139,6 +145,7 @@ def _load_bed(bed_asm: str) -> dict[str, BedCoords]:
     if not bed_path.exists():
         log.warning(f"  BED file not found: {bed_path}")
         bed_cache[bed_asm] = {}
+        bed_base_cache[bed_asm] = {}
         return {}
 
     coords: dict[str, BedCoords] = {}
@@ -156,6 +163,7 @@ def _load_bed(bed_asm: str) -> dict[str, BedCoords]:
             coords[tid] = (chrom, start_0 + 1, end, strand)  # convert to 1-based start
 
     bed_cache[bed_asm] = coords
+    bed_base_cache[bed_asm] = {_strip_version(k): v for k, v in coords.items()}
     log.info(f"  Loaded BED {bed_asm}: {len(coords):,} entries")
     return coords
 
@@ -222,9 +230,11 @@ for _, row in df_nc.iterrows():
     else:
         gene_id = tid
 
-    # Fetch coordinates from NONCODEv5 BED (full versioned ID).
+    # Fetch coordinates from NONCODEv5 BED (full versioned ID, then version-stripped fallback).
     bed_index = _load_bed(bed_asm)
     bed_entry = bed_index.get(tid)
+    if bed_entry is None:
+        bed_entry = bed_base_cache.get(bed_asm, {}).get(base_id)
 
     if bed_entry is not None:
         chrom, start, end, strand = bed_entry

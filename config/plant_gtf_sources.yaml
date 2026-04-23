@@ -54,3 +54,31 @@ plant_gtf_sources:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/solanum_tuberosum/Solanum_tuberosum.SolTub_3.0.60.gtf.gz"
     assembly_name: "SolTub_3.0"
     release: "60"
+
+  # ── Issue 5: Phytozome-format plant IDs ───────────────────────────
+  brachypodium_distachyon:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/brachypodium_distachyon/Brachypodium_distachyon.Brachypodium_distachyon_v3.0.60.gtf.gz"
+    assembly_name: "v3.0"
+    release: "60"
+
+  vitis_vinifera:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/vitis_vinifera/Vitis_vinifera.PN40024.v4.60.gtf.gz"
+    assembly_name: "PN40024.v4"
+    release: "60"
+
+  manihot_esculenta:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/manihot_esculenta/Manihot_esculenta.M.esculenta_v8.60.gtf.gz"
+    assembly_name: "M.esculenta_v8"
+    release: "60"
+
+  sorghum_bicolor:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/sorghum_bicolor/Sorghum_bicolor.Sorghum_bicolor_NCBIv3.60.gtf.gz"
+    assembly_name: "Sorghum_bicolor_NCBIv3"
+    release: "60"
+
+  selaginella_moellendorffii:
+    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/selaginella_moellendorffii/Selaginella_moellendorffii.v1.0.60.gtf.gz"
+    assembly_name: "v1.0"
+    release: "60"
+
+
