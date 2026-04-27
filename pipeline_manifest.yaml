@@ -17,12 +17,15 @@ meta:
     (Gramene / Ensembl Plants / GTF), and NONCODE, then downloads the
     required genome assemblies and extracts upstream/downstream flanking
     sequences.  Final outputs are a FASTA, a BED file, and an HTML report.
-  last_updated: "2026-04-15"
+  last_updated: "2026-04-27"
   configs:
-    main:             config/config.yaml
-    plant_gtf_sources: config/plant_gtf_sources.yaml
-    tool_sources:     config/tool_sources.yaml
-    rerun_unresolved: config/rerun_unresolved.yaml   # overlay; not loaded by default
+    main:                 config/config.yaml
+    plant_gtf_sources:    config/plant_gtf_sources.yaml
+    phytozome_gtf_sources: config/phytozome_gtf_sources.yaml
+    metazoa_gtf_sources:  config/metazoa_gtf_sources.yaml
+    yeast_gtf_sources:    config/yeast_gtf_sources.yaml
+    tool_sources:         config/tool_sources.yaml
+    rerun_unresolved:     config/rerun_unresolved.yaml   # overlay; not loaded by default
 
 # ============================================================
 # Entry points
@@ -65,21 +68,28 @@ include_graph:
     - workflow/rules/download_metadata.smk
     - workflow/rules/resolve_ids.smk
     - workflow/rules/resolve_external_ids.smk
+    - workflow/rules/resolve_metazoa_gtf.smk
+    - workflow/rules/resolve_yeast_gtf.smk
     - workflow/rules/biomart_plant_batch.smk
     - workflow/rules/resolve_plant_gtf.smk
+    - workflow/rules/resolve_phytozome_gtf.smk
     - workflow/rules/gramene_resolver.smk
     - workflow/rules/detect_ensembl_species.smk
     - workflow/rules/biomart_lookup.smk
     - workflow/rules/join_ensembl_results.smk
+    - workflow/rules/resolve_ensembl_assembly_accessions.smk
+    - workflow/rules/resolve_noncode_assembly_accessions.smk
     - workflow/rules/resolve_noncode.smk
     - workflow/rules/resolve_noncode_v4.smk
     - workflow/rules/resolve_noncode_2016.smk
     - workflow/rules/resolve_ncbi_genbank.smk
+    - workflow/rules/resolve_ncbi_assembly_accessions.smk
     - workflow/rules/resolve_abandoned_accessions.smk
     - workflow/rules/merge_resolved.smk
     - workflow/rules/download_assemblies.smk
     - workflow/rules/extract_sequences.smk
     - workflow/rules/report.smk
+    - workflow/rules/test_abandoned_accessions.smk   # test harness; not part of main DAG
 
 # ============================================================
 # Modules
@@ -151,6 +161,18 @@ modules:
         type:   processing
         output: "{results_dir}/ncbi_ucsc_resolved.tsv"
 
+  - file:   workflow/rules/resolve_ncbi_assembly_accessions.smk
+    status: active
+    role:   >
+      Checkpoint: for NCBI transcripts with NC_/NW_ sequence accessions but
+      no parent assembly accession, fetches the parent GCF_/GCA_, downloads
+      the assembly GTF from NCBI FTP, and extracts/enriches coordinates.
+      Sits between resolve_ids and merge_resolved in the NCBI stream.
+    rules:
+      - name:   resolve_ncbi_assembly_accessions
+        type:   checkpoint
+        output: "{results_dir}/ncbi_assembly_resolved.tsv"
+
   # ── Stage 2b: External / plant resolution ────────────────
   - file:   workflow/rules/resolve_external_ids.smk
     status: active
@@ -186,6 +208,20 @@ modules:
       - name:   resolve_plant_gtf
         type:   processing
         output: "{results_dir}/plant_gtf_resolved.tsv"
+
+  - file:   workflow/rules/resolve_phytozome_gtf.smk
+    status: active
+    role:   >
+      GFF3-based fallback for plant transcript IDs backed by Phytozome
+      annotations (species in config/phytozome_gtf_sources.yaml).  Downloads
+      or stages per-species GFF3 files from a manifest and resolves IDs.
+    rules:
+      - name:   download_phytozome_gtf
+        type:   data_prep
+        output: "resources/phytozome/{species}.gff3.gz"
+      - name:   resolve_phytozome_gtf
+        type:   processing
+        output: "{results_dir}/phytozome_gtf_resolved.tsv"
 
   - file:   workflow/rules/gramene_resolver.smk
     status: active
@@ -234,7 +270,56 @@ modules:
         type:   aggregation
         output: "{results_dir}/ensembl_resolved.tsv"
 
-  # ── Stage 2d: NONCODE resolution cascade ─────────────────
+  - file:   workflow/rules/resolve_ensembl_assembly_accessions.smk
+    status: active
+    role:   >
+      Checkpoint: enriches Ensembl-resolved rows by mapping assembly build
+      names (e.g. GRCh38, GRCz11) to downloadable NCBI accessions
+      (GCF_/GCA_), then optionally fills missing coordinates from cached
+      assembly GTF files.  Output feeds merge_resolved.
+    rules:
+      - name:   resolve_ensembl_assembly_accessions
+        type:   checkpoint
+        output: "{results_dir}/ensembl_assembly_resolved.tsv"
+
+  # ── Stage 2d: Metazoa (WormBase + FlyBase) resolution ────
+  - file:   workflow/rules/resolve_metazoa_gtf.smk
+    status: active
+    role:   >
+      Direct GTF-based resolution for WormBase (C. elegans) and FlyBase
+      (D. melanogaster) transcript IDs.  Downloads per-species GTFs from
+      config/metazoa_gtf_sources.yaml and resolves IDs directly without
+      going through BioMart.  Analogous to the plant GTF resolver.
+    rules:
+      - name:   download_metazoa_gtf
+        type:   data_prep
+        output: "resources/metazoa_gtf/{source}.gtf.gz"
+      - name:   resolve_worm_gtf
+        type:   processing
+        output: "{results_dir}/worm_gtf_resolved.tsv"
+      - name:   resolve_fly_gtf
+        type:   processing
+        output: "{results_dir}/fly_gtf_resolved.tsv"
+      - name:   resolve_metazoa_gtf
+        type:   aggregation
+        output: null   # aggregator — worm + fly resolved files are fed to merge_resolved
+
+  # ── Stage 2e: Yeast (SGD) resolution ─────────────────────
+  - file:   workflow/rules/resolve_yeast_gtf.smk
+    status: active
+    role:   >
+      GFF3-based resolver for all SGD (S. cerevisiae) transcript IDs.
+      Downloads the SGD GFF3 annotation once (protected output) from
+      config/yeast_gtf_sources.yaml and resolves IDs directly.
+    rules:
+      - name:   download_yeast_gtf
+        type:   data_prep
+        output: "resources/yeast_gtf/saccharomyces_cerevisiae.gff.gz"
+      - name:   resolve_yeast_gtf
+        type:   processing
+        output: "{results_dir}/yeast_gtf_resolved.tsv"
+
+  # ── Stage 2f: NONCODE resolution cascade ─────────────────
   - file:   workflow/rules/resolve_noncode.smk
     status: active
     role:   >
@@ -268,7 +353,7 @@ modules:
         type:   processing
         output: "{results_dir}/noncode_2016_resolved.tsv"
 
-  # ── Stage 2e: NCBI second / third pass ───────────────────
+  # ── Stage 2g: NCBI second / third pass ───────────────────
   - file:   workflow/rules/resolve_ncbi_genbank.smk
     status: active
     role:   >
@@ -295,10 +380,13 @@ modules:
   - file:   workflow/rules/merge_resolved.smk
     status: active
     role:   >
-      Concatenates all resolution streams (NCBI/UCSC, Ensembl, external,
-      BioMart plant, Gramene, plant GTF, NONCODE v5/v4/2016, abandoned)
-      into a single resolved_ids.tsv; produces ambiguous and unresolved
-      summary files.
+      Concatenates all assembly-accession-resolved streams into a single
+      resolved_ids.tsv.  Inputs include: ncbi_assembly_resolved,
+      ensembl_assembly_resolved, noncode_assembly_resolved, external,
+      biomart_plant, plant_gtf, phytozome_gtf, worm_gtf, fly_gtf,
+      yeast_gtf, gramene, noncode_v4, noncode_2016, abandoned.
+      Produces ambiguous.tsv, unresolved.tsv, pattern_unmatched.tsv,
+      and matched_not_found.tsv.
     rules:
       - name:   merge_resolved
         type:   aggregation
@@ -323,20 +411,30 @@ modules:
     role:   >
       Extracts strand-aware, flank-extended gene sequences for every
       resolved transcript using samtools faidx against cached assemblies.
-      Produces the final FASTA and BED outputs.
+      Produces the final FASTA and BED outputs, plus extraction_failed.tsv
+      for transcripts whose assembly was cached but extraction failed.
     rules:
       - name:   extract_sequences
         type:   processing
         output: "{results_dir}/output.fasta"
+        additional_outputs:
+          - "{results_dir}/output.bed"
+          - "{results_dir}/extraction_failed.tsv"
 
   # ── Stage 6: Report ───────────────────────────────────────
   - file:   workflow/rules/report.smk
     status: active
     role:   >
-      Generates an HTML summary report covering classification stats,
-      resolution rates by database, ambiguous/unresolved counts, and
-      benchmark runtimes.
+      Provides two HTML report rules.  `resolution_report` is an
+      intermediate target (no assemblies needed) covering resolution
+      stats and assembly-accession resolution rates.  `report` is the
+      full final report that additionally includes extraction stats,
+      benchmark timings for all stages, and worm/fly/yeast/phytozome
+      resolution breakdowns.
     rules:
+      - name:   resolution_report
+        type:   analysis
+        output: "{results_dir}/resolution_report.html"
       - name:   report
         type:   analysis
         output: "{results_dir}/report.html"
@@ -359,6 +457,14 @@ modules:
       - name:   biomart_arabidopsis_table
         type:   data_prep
         output: "{results_dir}/biomart/arabidopsis_thaliana.tsv.gz"
+
+  - file:   workflow/rules/test_abandoned_accessions.smk
+    status: active_separate
+    role:   >
+      100-transcript test harness for the resolve_abandoned_accessions
+      path.  Included in the main Snakefile but not part of the main DAG;
+      run ad-hoc to validate the third-pass NCBI resolver.
+    rules: []
 
   # ── Deprecated ────────────────────────────────────────────
   - file:   workflow/rules/download_id_mappings.smk
@@ -386,23 +492,37 @@ analysis_flow: |
 
   Stage 2 — Parallel ID resolution (all consume classified_ids.tsv)
     2a. NCBI / UCSC stream:
-          resolve_ids              →  ncbi_ucsc_resolved.tsv
-          resolve_ncbi_genbank     →  ncbi_genbank_resolved.tsv      (2nd pass)
-          resolve_abandoned_accessions → abandoned_resolved.tsv      (3rd pass)
+          resolve_ids                       →  ncbi_ucsc_resolved.tsv
+          resolve_ncbi_assembly_accessions [checkpoint]
+                                            →  ncbi_assembly_resolved.tsv     (NC_/NW_ → GCF_)
+          resolve_ncbi_genbank              →  ncbi_genbank_resolved.tsv      (2nd pass)
+          resolve_abandoned_accessions      →  abandoned_resolved.tsv         (3rd pass)
 
-    2b. Ensembl stream (checkpoint fan-out):
+    2b. Plant / external stream:
+          resolve_external_ids   →  external_resolved.tsv
+          biomart_plant_batch    →  biomart_resolved.tsv        (bulk BioMart)
+          resolve_plant_gtf      →  plant_gtf_resolved.tsv      (Ensembl Plants GTF fallback)
+          resolve_phytozome_gtf  →  phytozome_gtf_resolved.tsv  (Phytozome GFF3 fallback)
+          gramene_resolver       →  gramene_resolved.tsv         (API fallback)
+
+    2c. Ensembl stream (checkpoint fan-out):
           detect_ensembl_species [checkpoint]  →  ensembl_species_map.tsv
           biomart_lookup (×N species)          →  biomart/{species}.tsv.gz
           join_ensembl_results                 →  ensembl_resolved.tsv
+          resolve_ensembl_assembly_accessions [checkpoint]
+                                               →  ensembl_assembly_resolved.tsv
 
-    2c. Plant / external stream:
-          resolve_external_ids   →  external_resolved.tsv
-          biomart_plant_batch    →  biomart_resolved.tsv        (bulk BioMart)
-          resolve_plant_gtf      →  plant_gtf_resolved.tsv      (GTF fallback)
-          gramene_resolver       →  gramene_resolved.tsv         (API fallback)
+    2d. Metazoa stream (WormBase + FlyBase):
+          resolve_worm_gtf       →  worm_gtf_resolved.tsv
+          resolve_fly_gtf        →  fly_gtf_resolved.tsv
 
-    2d. NONCODE stream:
+    2e. Yeast (SGD) stream:
+          resolve_yeast_gtf      →  yeast_gtf_resolved.tsv
+
+    2f. NONCODE stream:
           resolve_noncode        →  noncode_resolved.tsv         (v5 primary)
+          resolve_noncode_assembly_accessions [checkpoint]
+                                 →  noncode_assembly_resolved.tsv
           resolve_noncode_v4     →  noncode_v4_resolved.tsv      (v4 fallback)
           resolve_noncode_2016   →  noncode_2016_resolved.tsv    (2016 fallback)
 
@@ -411,13 +531,14 @@ analysis_flow: |
                        pattern_unmatched.tsv / matched_not_found.tsv
 
   Stage 4 — Assembly download (checkpoint fan-out)
-    download_assemblies [checkpoint]  →  resources/cache/<accession>/genome.fasta
+    download_assemblies [checkpoint]  →  resources/cache/<accession>/genome.fasta + .fai
 
   Stage 5 — Sequence extraction
-    extract_sequences  →  output.fasta / output.bed
+    extract_sequences  →  output.fasta / output.bed / extraction_failed.tsv
 
   Stage 6 — Report
-    report             →  report.html
+    resolution_report  →  resolution_report.html  (intermediate; no assemblies needed)
+    report             →  report.html              (full; requires Stages 4-5)
 
 # ============================================================
 # Utility locations
@@ -457,8 +578,9 @@ wildcards:
 # ============================================================
 audit_findings:
   outside_main_flow:
-    - workflow/rules/biomart_arabidopsis.smk   # active_separate; diagnostic use only
-    - workflow/rules/download_id_mappings.smk  # deprecated; no callers
+    - workflow/rules/biomart_arabidopsis.smk         # active_separate; diagnostic use only
+    - workflow/rules/download_id_mappings.smk        # deprecated; no callers
+    - workflow/rules/test_abandoned_accessions.smk   # test harness; included but not in main DAG
 
 # ============================================================
 # Known bugs

@@ -24,6 +24,7 @@ rule extract_sequences:
     output:
         fasta = f"{RESULTS}/output.fasta",
         bed   = f"{RESULTS}/output.bed",
+        failed  = f"{RESULTS}/extraction_failed.tsv",
     log:
         f"{LOGS}/extract_sequences.log",
     benchmark:

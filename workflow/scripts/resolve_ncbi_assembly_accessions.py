@@ -51,6 +51,7 @@ log = get_logger("resolve_ncbi_assembly_accessions", snakemake.log[0])
 input_resolved = snakemake.input.resolved
 out_resolved = snakemake.output.resolved
 out_unresolved = snakemake.output.unresolved
+out_ambiguous = snakemake.output.ambiguous
 cfg = snakemake.config
 
 set_entrez_credentials(cfg["ncbi_email"], cfg.get("ncbi_api_key"))
@@ -285,6 +286,10 @@ for idx, row in df_mapped.iterrows():
 # Step 6: Write outputs
 log.info(f"Writing {len(df_mapped)} resolved row(s) to {out_resolved}")
 df_mapped[RESOLVED_COLS].to_csv(out_resolved, sep="\t", index=False)
+
+df_ambiguous = df_mapped[df_mapped["is_ambiguous"] == True][RESOLVED_COLS]
+log.info(f"Writing {len(df_ambiguous)} ambiguous row(s) to {out_ambiguous}")
+df_ambiguous.to_csv(out_ambiguous, sep="\t", index=False)
 
 unresolved_df = pd.DataFrame(unresolved_rows)
 if len(unresolved_df) > 0:
