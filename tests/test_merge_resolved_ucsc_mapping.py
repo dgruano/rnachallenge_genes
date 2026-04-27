@@ -48,26 +48,26 @@ class TestApplyUCSCToGCFMapping:
 
     def test_ucsc_name_replaced_with_gcf(self):
         df = self._make_frame(["ce10", "dm6"])
-        result = apply_ucsc_to_gcf_mapping(df, label="noncode_v4")
+        result = apply_ucsc_to_gcf_mapping(df)
         assert result.loc[0, "assembly_accession"] == "GCF_000002985.6"
         assert result.loc[1, "assembly_accession"] == "GCF_000001215.4"
 
     def test_already_gcf_passthrough(self):
         df = self._make_frame(["GCF_000001405.40"])
-        result = apply_ucsc_to_gcf_mapping(df, label="noncode_v4")
+        result = apply_ucsc_to_gcf_mapping(df)
         assert result.loc[0, "assembly_accession"] == "GCF_000001405.40"
 
     def test_unknown_name_passthrough(self):
         df = self._make_frame(["UnknownAssembly"])
-        result = apply_ucsc_to_gcf_mapping(df, label="noncode_v4")
+        result = apply_ucsc_to_gcf_mapping(df)
         assert result.loc[0, "assembly_accession"] == "UnknownAssembly"
 
     def test_danrer7_replaced(self):
         df = self._make_frame(["danRer7"])
-        result = apply_ucsc_to_gcf_mapping(df, label="noncode_v4")
+        result = apply_ucsc_to_gcf_mapping(df)
         assert result.loc[0, "assembly_accession"] == "GCF_000002035.5"
 
     def test_empty_frame_passthrough(self):
         df = pd.DataFrame(columns=["transcript_id", "assembly_accession", "db_source"])
-        result = apply_ucsc_to_gcf_mapping(df, label="noncode_v4")
+        result = apply_ucsc_to_gcf_mapping(df)
         assert result.empty

@@ -610,7 +610,7 @@ EXTENDED_UCSC_TO_GCF: dict[str, str] = {
 }
 
 
-def apply_ucsc_to_gcf_mapping(df: pd.DataFrame, label: str) -> pd.DataFrame:
+def apply_ucsc_to_gcf_mapping(df: pd.DataFrame) -> pd.DataFrame:
     """Replace UCSC assembly names with GCF_ accessions in assembly_accession column."""
     if df.empty or "assembly_accession" not in df.columns:
         return df
