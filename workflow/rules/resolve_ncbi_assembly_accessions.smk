@@ -30,6 +30,7 @@ checkpoint resolve_ncbi_assembly_accessions:
     output:
         resolved   = f"{RESULTS}/ncbi_assembly_resolved.tsv",
         unresolved = f"{RESULTS}/ncbi_assembly_unresolved.tsv",
+        ambiguous  = f"{RESULTS}/ncbi_assembly_ambiguous.tsv",
     log:
         f"{LOGS}/resolve_ncbi_assembly_accessions.log",
     benchmark:

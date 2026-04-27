@@ -29,6 +29,30 @@ in_ambiguous       = snakemake.input.ambiguous
 in_species_map     = snakemake.input.species_map
 in_unknown_pfx     = snakemake.input.unknown_prefixes
 in_benchmarks      = snakemake.input.benchmarks
+in_ncbi_asm_res   = snakemake.input.ncbi_assembly_resolved
+in_ncbi_asm_unr   = snakemake.input.ncbi_assembly_unresolved
+in_ensl_asm_res   = snakemake.input.ensembl_assembly_resolved
+in_ensl_asm_unr   = snakemake.input.ensembl_assembly_unresolved
+in_nonc_asm_res   = snakemake.input.noncode_assembly_resolved
+in_nonc_asm_unr   = snakemake.input.noncode_assembly_unresolved
+in_gramene_res     = snakemake.input.gramene_resolved
+in_gramene_unr     = snakemake.input.gramene_unresolved
+in_phyto_res       = snakemake.input.phytozome_resolved
+in_phyto_unr       = snakemake.input.phytozome_unresolved
+in_nonc_res        = snakemake.input.noncode_resolved
+in_nonc_unr        = snakemake.input.noncode_unresolved
+in_nonc_v4_res     = snakemake.input.noncode_v4_resolved
+in_nonc_v4_unr     = snakemake.input.noncode_v4_unresolved
+in_nonc_2016_res   = snakemake.input.noncode_2016_resolved
+in_nonc_2016_unr   = snakemake.input.noncode_2016_unresolved
+in_plant_res       = snakemake.input.plant_gtf_resolved
+in_plant_unr       = snakemake.input.plant_gtf_unresolved
+in_worm_res        = snakemake.input.worm_gtf_resolved
+in_worm_unr        = snakemake.input.worm_gtf_unresolved
+in_fly_res         = snakemake.input.fly_gtf_resolved
+in_fly_unr         = snakemake.input.fly_gtf_unresolved
+in_yeast_res       = snakemake.input.yeast_gtf_resolved
+in_yeast_unr       = snakemake.input.yeast_gtf_unresolved
 
 log.info("Generating HTML resolution summary report")
 
@@ -38,6 +62,34 @@ df_unr    = pd.read_csv(in_unresolved,  sep="\t")
 df_amb    = pd.read_csv(in_ambiguous,   sep="\t")
 df_spmap  = pd.read_csv(in_species_map, sep="\t")
 df_unkpfx = pd.read_csv(in_unknown_pfx, sep="\t") if Path(in_unknown_pfx).exists() else pd.DataFrame()
+df_ncbi_asm_res  = pd.read_csv(in_ncbi_asm_res,  sep="\t") if Path(in_ncbi_asm_res).exists()  else pd.DataFrame()
+df_ncbi_asm_unr  = pd.read_csv(in_ncbi_asm_unr,  sep="\t") if Path(in_ncbi_asm_unr).exists()  else pd.DataFrame()
+df_ensl_asm_res  = pd.read_csv(in_ensl_asm_res,  sep="\t") if Path(in_ensl_asm_res).exists()  else pd.DataFrame()
+df_ensl_asm_unr  = pd.read_csv(in_ensl_asm_unr,  sep="\t") if Path(in_ensl_asm_unr).exists()  else pd.DataFrame()
+df_nonc_asm_res  = pd.read_csv(in_nonc_asm_res,  sep="\t") if Path(in_nonc_asm_res).exists()  else pd.DataFrame()
+df_nonc_asm_unr  = pd.read_csv(in_nonc_asm_unr,  sep="\t") if Path(in_nonc_asm_unr).exists()  else pd.DataFrame()
+
+def _read(p):
+    return pd.read_csv(p, sep="\t") if Path(p).exists() else pd.DataFrame()
+
+df_gramene_res   = _read(in_gramene_res)
+df_gramene_unr   = _read(in_gramene_unr)
+df_phyto_res     = _read(in_phyto_res)
+df_phyto_unr     = _read(in_phyto_unr)
+df_nonc_res      = _read(in_nonc_res)
+df_nonc_unr      = _read(in_nonc_unr)
+df_nonc_v4_res   = _read(in_nonc_v4_res)
+df_nonc_v4_unr   = _read(in_nonc_v4_unr)
+df_nonc_2016_res = _read(in_nonc_2016_res)
+df_nonc_2016_unr = _read(in_nonc_2016_unr)
+df_plant_res     = _read(in_plant_res)
+df_plant_unr     = _read(in_plant_unr)
+df_worm_res      = _read(in_worm_res)
+df_worm_unr      = _read(in_worm_unr)
+df_fly_res       = _read(in_fly_res)
+df_fly_unr       = _read(in_fly_unr)
+df_yeast_res     = _read(in_yeast_res)
+df_yeast_unr     = _read(in_yeast_unr)
 
 # ── Benchmark table ───────────────────────────────────────────
 bench_rows = []
@@ -98,12 +150,87 @@ def stat_card(label, value, color="#3b82f6"):
 total_input  = len(df_cls) + len(df_unr)
 now          = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-db_table_rows = "".join(
-    f"<tr><td>{db}</td><td>{db_input.get(db,0)}</td>"
-    f"<td>{db_resolved.get(db,0)}</td>"
-    f"<td>{'BioMart wrapper' if db == 'ensembl' else 'REST API'}</td></tr>"
-    for db in ["ncbi", "ensembl", "ucsc"]
+# Pipeline funnel (resolution stage)
+_asm = df_res["assembly_accession"] if "assembly_accession" in df_res.columns else pd.Series(dtype=str)
+n_has_assembly = int((_asm.notna() & (_asm.str.strip() != "") & (_asm.str.lower() != "nan") & (_asm.str.lower() != "none")).sum())
+n_has_coords   = int((df_res["start"].notna() & df_res["end"].notna()).sum()) if {"start","end"} <= set(df_res.columns) else 0
+
+def _pct(num, denom):
+    return f"{100*num/denom:.0f}%" if denom else "—"
+
+funnel_rows = [
+    ("Input IDs",              total_input,   _pct(total_input,    total_input)),
+    ("Classified",             len(df_cls),   _pct(len(df_cls),    total_input)),
+    ("Resolved",               len(df_res),   _pct(len(df_res),    total_input)),
+    ("Has assembly accession", n_has_assembly,_pct(n_has_assembly, len(df_res))),
+    ("Has coordinates",        n_has_coords,  _pct(n_has_coords,   len(df_res))),
+]
+funnel_html = "".join(
+    f"<tr><td>{step}</td><td>{cnt}</td><td>{pct}</td></tr>"
+    for step, cnt, pct in funnel_rows
 )
+
+RESOLVERS = [
+    ("BioMart Ensembl",    "ensembl",      df_ensl_asm_res,    df_ensl_asm_unr,    "BioMart API"),
+    ("BioMart Plants GTF", "plant_gtf",    df_plant_res,       df_plant_unr,        "Ensembl Plants GTF"),
+    ("Gramene",            "gramene",      df_gramene_res,     df_gramene_unr,      "Gramene REST API"),
+    ("Phytozome",          "phytozome",    df_phyto_res,       df_phyto_unr,        "JGI Phytozome GFF3"),
+    ("NCBI GenBank",       "ncbi",         df_ncbi_asm_res,    df_ncbi_asm_unr,     "NCBI Entrez API"),
+    ("NONCODE v5",         "noncode",      df_nonc_res,        df_nonc_unr,         "NONCODE BED/FASTA"),
+    ("NONCODE v4",         "noncode_v4",   df_nonc_v4_res,     df_nonc_v4_unr,      "NONCODE v4 BED/FASTA"),
+    ("NONCODE 2016",       "noncode_2016", df_nonc_2016_res,   df_nonc_2016_unr,    "NONCODE 2016 BED/FASTA"),
+    ("WormBase GTF",       "wormbase",     df_worm_res,        df_worm_unr,         "Ensembl Metazoa GTF"),
+    ("FlyBase GTF",        "flybase",      df_fly_res,         df_fly_unr,          "Ensembl Metazoa GTF"),
+    ("SGD/Yeast GTF",      "sgd",          df_yeast_res,       df_yeast_unr,        "SGD GTF"),
+    ("Phytozome (plants)", "plant",        df_phyto_res,       df_phyto_unr,        "JGI Phytozome GFF3"),
+]
+
+resolver_rows_html = ""
+for label, db, df_r, df_u, method in RESOLVERS:
+    n_in  = db_input.get(db, 0)
+    n_res = len(df_r)
+    n_unr = len(df_u)
+    rate  = f"{100*n_res/(n_res+n_unr):.0f}%" if (n_res + n_unr) > 0 else "—"
+    resolver_rows_html += (
+        f"<tr><td>{label}</td><td><code>{db}</code></td>"
+        f"<td>{n_in}</td><td>{n_res}</td><td>{n_unr}</td>"
+        f"<td>{rate}</td><td>{method}</td></tr>"
+    )
+
+# ── Gramene stats ─────────────────────────────────────────────
+gramene_species_rows = ""
+if not df_gramene_res.empty and "species" in df_gramene_res.columns:
+    for sp, cnt in df_gramene_res["species"].value_counts().head(15).items():
+        gramene_species_rows += f"<tr><td>{sp}</td><td>{cnt}</td></tr>"
+
+gramene_biotype_rows = ""
+if not df_gramene_res.empty and "biotype" in df_gramene_res.columns:
+    for bt, cnt in df_gramene_res["biotype"].value_counts().head(10).items():
+        gramene_biotype_rows += f"<tr><td>{bt}</td><td>{cnt}</td></tr>"
+
+noncode_rows_html = ""
+for label, df_r, df_u in [
+    ("NONCODE v5",   df_nonc_res,      df_nonc_unr),
+    ("NONCODE v4",   df_nonc_v4_res,   df_nonc_v4_unr),
+    ("NONCODE 2016", df_nonc_2016_res, df_nonc_2016_unr),
+]:
+    noncode_rows_html += (
+        f"<tr><td>{label}</td><td>{len(df_r)}</td><td>{len(df_u)}</td>"
+        f"<td>{len(df_r)+len(df_u)}</td></tr>"
+    )
+
+asm_rows_html = ""
+for resolver, df_r, df_u in [
+    ("NCBI",    df_ncbi_asm_res, df_ncbi_asm_unr),
+    ("Ensembl", df_ensl_asm_res, df_ensl_asm_unr),
+    ("NONCODE", df_nonc_asm_res, df_nonc_asm_unr),
+]:
+    n_res = len(df_r)
+    n_unr = len(df_u)
+    asm_rows_html += (
+        f"<tr><td>{resolver}</td><td>{n_res}</td><td>{n_unr}</td>"
+        f"<td>{n_res + n_unr}</td></tr>"
+    )
 
 HTML = f"""<!DOCTYPE html>
 <html lang="en">
@@ -152,12 +279,20 @@ HTML = f"""<!DOCTYPE html>
 
   <h2>Overview</h2>
   <div class="stat-grid">
-    {stat_card("Total Input IDs",   total_input,    "#1e40af")}
-    {stat_card("Classified",        len(df_cls),    "#0369a1")}
-    {stat_card("Resolved",          len(df_res),    "#059669")}
-    {stat_card("Unresolved",        len(df_unr),    "#dc2626")}
-    {stat_card("Ambiguous (alts)",  len(df_amb),    "#d97706")}
+    {stat_card("Total Input IDs",        total_input,       "#1e40af")}
+    {stat_card("Classified",             len(df_cls),       "#0369a1")}
+    {stat_card("Resolved",               len(df_res),       "#059669")}
+    {stat_card("Has Assembly Accession", n_has_assembly,    "#0891b2")}
+    {stat_card("Has Coordinates",        n_has_coords,      "#0891b2")}
+    {stat_card("Unresolved",             len(df_unr),       "#dc2626")}
+    {stat_card("Ambiguous (alts)",       len(df_amb),       "#d97706")}
   </div>
+
+  <h2>Pipeline Funnel</h2>
+  <table class="data-table">
+    <thead><tr><th>Stage</th><th>Transcripts</th><th>% of resolved (or input)</th></tr></thead>
+    <tbody>{funnel_html}</tbody>
+  </table>
 
   <div class="info-box">
     Resolution complete. Run <code>snakemake results/report.html</code> (or the full
@@ -165,17 +300,10 @@ HTML = f"""<!DOCTYPE html>
     final report including sequence counts.
   </div>
 
-  <h2>Resolution by Database</h2>
-  <div class="biomart-box">
-    <strong>Ensembl IDs</strong> were resolved using the
-    <strong>snakemake-wrappers BioMart wrapper</strong>
-    (release <strong>{RELEASE}</strong>) — one bulk download per species,
-    fully reproducible and cached across pipeline runs.
-    NCBI and UCSC IDs were resolved via their respective REST APIs.
-  </div>
+  <h2>Resolution by Resolver</h2>
   <table class="data-table">
-    <thead><tr><th>Database</th><th>Input IDs</th><th>Resolved</th><th>Resolution method</th></tr></thead>
-    <tbody>{db_table_rows}</tbody>
+    <thead><tr><th>Resolver</th><th>db_source</th><th>Input IDs</th><th>Resolved</th><th>Unresolved</th><th>Rate</th><th>Method</th></tr></thead>
+    <tbody>{resolver_rows_html}</tbody>
   </table>
 
   <h2>Ensembl Species Detected (BioMart runs)</h2>
@@ -183,6 +311,30 @@ HTML = f"""<!DOCTYPE html>
     <thead><tr><th>Species</th><th>Genome Build</th><th>Transcripts</th></tr></thead>
     <tbody>{ensembl_species_rows if ensembl_species_rows else
             "<tr><td colspan='3'>No Ensembl species detected</td></tr>"}</tbody>
+  </table>
+
+  <h2>Gramene Resolution Details</h2>
+  <div style="display:flex;gap:24px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:280px;">
+      <strong style="display:block;margin-bottom:8px;">Top species</strong>
+      <table class="data-table">
+        <thead><tr><th>Species</th><th>Transcripts</th></tr></thead>
+        <tbody>{gramene_species_rows if gramene_species_rows else "<tr><td colspan='2'>No data</td></tr>"}</tbody>
+      </table>
+    </div>
+    <div style="flex:1;min-width:280px;">
+      <strong style="display:block;margin-bottom:8px;">Biotype breakdown</strong>
+      <table class="data-table">
+        <thead><tr><th>Biotype</th><th>Transcripts</th></tr></thead>
+        <tbody>{gramene_biotype_rows if gramene_biotype_rows else "<tr><td colspan='2'>No data</td></tr>"}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <h2>NONCODE Version Breakdown</h2>
+  <table class="data-table">
+    <thead><tr><th>Version</th><th>Resolved</th><th>Unresolved</th><th>Total Input</th></tr></thead>
+    <tbody>{noncode_rows_html}</tbody>
   </table>
 
   <h2>Unknown Ensembl Prefixes</h2>
@@ -203,6 +355,12 @@ HTML = f"""<!DOCTYPE html>
 
   <h2>Unresolved IDs</h2>
   {df_to_html_table(df_unr)}
+
+  <h2>Assembly Accession Resolution</h2>
+  <table class="data-table">
+    <thead><tr><th>Resolver</th><th>Assembly Resolved</th><th>Assembly Unresolved</th><th>Total Input</th></tr></thead>
+    <tbody>{asm_rows_html}</tbody>
+  </table>
 
   <h2>Ambiguous IDs (alternatives not chosen)</h2>
   {df_to_html_table(df_amb)}

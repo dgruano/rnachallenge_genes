@@ -27,12 +27,14 @@ Output files:
 """
 
 import gzip
+import re
 import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import unquote
 
 import pandas as pd
 import requests
@@ -87,8 +89,22 @@ def download_file(url: str, dest: Path, label: str) -> bool:
                     raise IOError(f"Incomplete download: {downloaded}/{total} bytes")
             log.info(f"  [{label}] Download complete → {dest}")
             return True
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if dest.exists():
+                dest.unlink()
+            if status is not None and 400 <= status < 500:
+                log.error(
+                    f"  [{label}] Permanent failure (HTTP {status}) — not retrying: {url}"
+                )
+                return False
+            log.warning(
+                f"  [{label}] attempt {attempt} failed (HTTP {status}, transient): {exc}"
+            )
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_WAIT * attempt)
         except Exception as exc:
-            log.warning(f"  [{label}] attempt {attempt} failed: {exc}")
+            log.warning(f"  [{label}] attempt {attempt} failed (transient): {exc}")
             if dest.exists():
                 dest.unlink()
             if attempt < MAX_RETRIES:
@@ -132,11 +148,41 @@ def ncbi_fasta_url(accession: str) -> Optional[str]:
         data = resp.json()
         reports = data.get("reports", [])
         if not reports:
-            return None
+            # Fallback: query the NCBI FTP directory listing to find the assembly folder
+            acc_no_version = accession.split(".")[0]
+            prefix = acc_no_version[0:3]
+            digits = acc_no_version[4:]
+            d1, d2, d3 = digits[0:3], digits[3:6], digits[6:9]
+            ftp_dir = f"{NCBI_FTP_BASE}/{prefix}/{d1}/{d2}/{d3}/"
+            log.warning(
+                f"  NCBI API returned no reports for {accession}; "
+                f"falling back to FTP directory listing: {ftp_dir}"
+            )
+            try:
+                dir_resp = requests.get(ftp_dir, timeout=30)
+                dir_resp.raise_for_status()
+                # Directory listing HTML contains hrefs like "GCF_000188115.4_Ae_tauschii_v6.0/"
+                match = re.search(
+                    rf'href="({re.escape(accession)}_[^/"]+)/"', dir_resp.text
+                )
+                if match:
+                    folder = match.group(1)
+                    url = f"{ftp_dir}{folder}/{folder}_genomic.fna.gz"
+                    log.debug(f"  NCBI FTP fallback URL: {url}")
+                    return url
+                else:
+                    log.warning(
+                        f"  FTP directory listing for {accession} contained no matching folder"
+                    )
+                    return None
+            except Exception as exc:
+                log.warning(f"  FTP directory listing fallback failed for {accession}: {exc}")
+                return None
         report = reports[0]
         asm_name = report.get("assembly_info", {}).get("assembly_name", "")
         if not asm_name:
             return None
+        asm_name = unquote(asm_name).replace(" ", "_")  # decode %20 etc., then normalise spaces
 
         # Build FTP URL from accession pattern
         # GCF_000001405.40 → GCF/000/001/405/GCF_000001405.40_GRCh38.p14/
@@ -227,29 +273,26 @@ else:
 
     log.info(f"Unique assemblies to process: {len(unique_asm)}")
 
-    for _, row in unique_asm.iterrows():
+    total = len(unique_asm)
+    for n, (_, row) in enumerate(unique_asm.iterrows(), start=1):
         accession = str(row["assembly_accession"]).strip()
+        organism = str(row.get("organism", "unknown"))
+        db_source = str(row.get("db_source", "unknown"))
+        log.info(
+            f"[{n}/{total}] Processing accession {accession} "
+            f"(organism: {organism}, db_source: {db_source})"
+        )
 
         if is_ncbi_assembly_accession(accession):
-            log.info(f"Processing GCF_/GCA_ accession: {accession}")
-
-            # Check if already cached (both FASTA and index)
-            cached_fasta = CACHE_DIR / accession / "genome.fasta"
-            cached_idx = CACHE_DIR / accession / "genome.fasta.fai"
-            if cached_fasta.exists() and cached_idx.exists():
-                log.info(f"  [{accession}] Already cached and indexed — skipping")
+            ok = ensure_assembly(accession)
+            if ok:
                 downloaded.append(row)
+                log.info(f"  [{accession}] ready")
             else:
-                # Try to download
-                ok = ensure_assembly(accession)
-                if ok:
-                    downloaded.append(row)
-                    log.info(f"  ✓ {accession} ready")
-                else:
-                    log.error(f"  ✗ {accession} FAILED to download")
-                    unresolved_row = row.copy()
-                    unresolved_row["reason"] = "download_failed"
-                    unresolved.append(unresolved_row)
+                log.error(f"  [{accession}] FAILED to download")
+                unresolved_row = row.copy()
+                unresolved_row["reason"] = "download_failed"
+                unresolved.append(unresolved_row)
         else:
             # Non-GCF_/GCA_ accession
             log.warning(

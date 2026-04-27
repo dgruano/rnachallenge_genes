@@ -35,6 +35,7 @@ log = get_logger("extract_sequences", snakemake.log[0])
 input_tsv = snakemake.input.resolved
 out_fasta = snakemake.output.fasta
 out_bed = snakemake.output.bed
+out_failed = snakemake.output.failed
 UPSTREAM = int(snakemake.params.upstream)
 DOWNSTREAM = int(snakemake.params.downstream)
 CACHE_DIR = Path(snakemake.params.cache_dir)
@@ -79,8 +80,10 @@ log.info(f"Loaded {len(df)} resolved transcripts")
 
 fasta_records: list[SeqRecord] = []
 bed_rows: list[dict] = []
+failed_rows: list[dict] = []
 
 skipped_no_asm = 0
+skipped_no_coord = 0
 skipped_no_chrom = 0
 skipped_no_seq = 0
 extracted = 0
@@ -91,12 +94,21 @@ for idx, row in df.iterrows():
     symbol = str(row["gene_symbol"])
     organism = str(row["organism"])
     assembly = str(row["assembly_accession"])
+    db_source = str(row.get("db_source", "unknown"))
     chrom = str(row["chrom"])
-    start = int(row["start"])
-    end = int(row["end"])
     strand = str(row["strand"])
 
     label = f"{tid}/{assembly}"
+
+    # Guard: skip rows with missing coordinates
+    if pd.isna(row["start"]) or pd.isna(row["end"]):
+        log.warning(f"  [{label}] Missing coordinates (start/end NaN) — skipping")
+        skipped_no_coord += 1
+        failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "missing_coordinates"})
+        continue
+
+    start = int(row["start"])
+    end = int(row["end"])
 
     # Locate cached assembly
     fasta_path = CACHE_DIR / assembly / "genome.fasta"
@@ -105,6 +117,7 @@ for idx, row in df.iterrows():
     if not fasta_path.exists() or not fai_path.exists():
         log.warning(f"  [{label}] Assembly not cached — skipping")
         skipped_no_asm += 1
+        failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "assembly_not_cached"})
         continue
 
     # Get chromosome lengths for clamping
@@ -122,6 +135,7 @@ for idx, row in df.iterrows():
                 f"  [{label}] Chromosome {chrom!r} not found in .fai — skipping"
             )
             skipped_no_chrom += 1
+            failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "chrom_not_found"})
             continue
 
     chrom_len = chrom_lengths[chrom_key]
@@ -144,6 +158,7 @@ for idx, row in df.iterrows():
     if raw_seq is None:
         log.warning(f"  [{label}] Sequence extraction failed — skipping")
         skipped_no_seq += 1
+        failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "sequence_error"})
         continue
 
     # Reverse complement for minus strand
@@ -195,11 +210,17 @@ df_bed = pd.DataFrame(bed_rows)
 log.info(f"Writing {len(df_bed)} BED records to {out_bed}")
 df_bed.to_csv(out_bed, sep="\t", index=False, header=True)
 
+# ── Write failed transcripts ──────────────────────────────────
+df_failed = pd.DataFrame(failed_rows)
+log.info(f"Writing {len(df_failed)} failed records to {out_failed}")
+df_failed.to_csv(out_failed, sep="\t", index=False)
+
 # ── Summary ──────────────────────────────────────────────────
 log.info("=" * 60)
 log.info(f"Total transcripts input      : {len(df)}")
 log.info(f"Successfully extracted       : {extracted}")
 log.info(f"Skipped (assembly missing)   : {skipped_no_asm}")
+log.info(f"Skipped (missing coords)     : {skipped_no_coord}")
 log.info(f"Skipped (chrom not in .fai)  : {skipped_no_chrom}")
 log.info(f"Skipped (sequence error)     : {skipped_no_seq}")
 log.info(f"Written FASTA → {out_fasta}")
