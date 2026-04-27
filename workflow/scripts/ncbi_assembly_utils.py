@@ -442,3 +442,148 @@ def extract_annotations_by_geneid(
             }
 
     return result
+
+
+# ── Genomic accession → parent assembly via elink ────────────────────────────
+
+def map_genomic_to_assembly_elink(
+    accessions: list[str],
+    log: Optional[logging.Logger] = None,
+    max_retries: int = 3,
+    retry_wait: float = 0.5,
+) -> dict[str, Optional[str]]:
+    """
+    Map genomic accessions (NC_/NT_/NW_) to parent assembly accessions (GCF_/GCA_)
+    using three batched NCBI API calls instead of downloading full GenBank records.
+
+    Phase 1 — esearch(nuccore) per unique accession → nuccore UID
+    Phase 2 — batch elink(nuccore→assembly) → assembly UIDs
+    Phase 3 — batch esummary(assembly) → GCF_/GCA_ accession strings
+
+    Parameters
+    ----------
+    accessions : list of str
+        Genomic accessions, e.g. ["NC_000001.11", "NT_033779.5"]
+    log : logging.Logger, optional
+    max_retries : int
+    retry_wait : float
+
+    Returns
+    -------
+    dict[str, Optional[str]]
+        {accession: GCF_accession} — value is None when mapping failed.
+    """
+    if not accessions:
+        return {}
+
+    if log is None:
+        log = logging.getLogger(__name__)
+
+    result: dict[str, Optional[str]] = {acc: None for acc in accessions}
+
+    # ── Phase 1: accession string → nuccore UID (one esearch per accession) ──
+    acc_to_uid: dict[str, str] = {}
+    for acc in accessions:
+        def _search(a=acc):
+            handle = Entrez.esearch(db="nuccore", term=f"{a}[Accession]", retmax=1)
+            rec = Entrez.read(handle)
+            handle.close()
+            return rec
+
+        try:
+            rec = _retry_ncbi_call(_search, f"esearch(nuccore) {acc}", max_retries, retry_wait)
+        except RuntimeError as exc:
+            log.warning(str(exc))
+            continue
+
+        if rec["IdList"]:
+            acc_to_uid[acc] = rec["IdList"][0]
+        else:
+            log.debug(f"  {acc}: no nuccore record found")
+        time.sleep(_RATE_LIMIT_DELAY)
+
+    if not acc_to_uid:
+        log.warning("No nuccore UIDs retrieved — all accessions unresolvable")
+        return result
+
+    # ── Phase 2: batch elink nuccore → assembly ────────────────────────────
+    nuccore_uid_to_asm_uids: dict[str, list[str]] = {}
+    all_nuccore_uids = list(acc_to_uid.values())
+
+    for i in range(0, len(all_nuccore_uids), _BATCH_SIZE):
+        chunk = all_nuccore_uids[i : i + _BATCH_SIZE]
+
+        def _elink(c=chunk):
+            handle = Entrez.elink(dbfrom="nuccore", db="assembly", id=",".join(c))
+            links = Entrez.read(handle)
+            handle.close()
+            return links
+
+        try:
+            links = _retry_ncbi_call(
+                _elink,
+                f"elink(nuccore→assembly) chunk {i // _BATCH_SIZE + 1}",
+                max_retries,
+                retry_wait,
+            )
+        except RuntimeError as exc:
+            log.error(str(exc))
+            continue
+
+        for linkset in links:
+            from_uids = linkset.get("IdList", [])
+            asm_uids = [
+                link["Id"]
+                for lsdb in linkset.get("LinkSetDb", [])
+                for link in lsdb.get("Link", [])
+            ]
+            for fid in from_uids:
+                nuccore_uid_to_asm_uids.setdefault(fid, []).extend(asm_uids)
+        time.sleep(_RATE_LIMIT_DELAY)
+
+    # ── Phase 3: batch esummary(assembly) → GCF_ accession ────────────────
+    all_asm_uids = list({uid for uids in nuccore_uid_to_asm_uids.values() for uid in uids})
+    asm_uid_to_gcf: dict[str, str] = {}
+
+    for i in range(0, len(all_asm_uids), _BATCH_SIZE):
+        chunk = all_asm_uids[i : i + _BATCH_SIZE]
+
+        def _summary(c=chunk):
+            handle = Entrez.esummary(db="assembly", id=",".join(c), report="full")
+            summary = Entrez.read(handle)
+            handle.close()
+            return summary
+
+        try:
+            summary = _retry_ncbi_call(
+                _summary,
+                f"esummary(assembly) chunk {i // _BATCH_SIZE + 1}",
+                max_retries,
+                retry_wait,
+            )
+        except RuntimeError as exc:
+            log.error(str(exc))
+            continue
+
+        for doc in summary["DocumentSummarySet"]["DocumentSummary"]:
+            uid = doc.attributes.get("uid", "")
+            gcf = doc.get("AssemblyAccession", "")
+            if uid and gcf:
+                asm_uid_to_gcf[uid] = gcf
+        time.sleep(_RATE_LIMIT_DELAY)
+
+    # ── Assemble final result ─────────────────────────────────────────────
+    for acc, nuccore_uid in acc_to_uid.items():
+        asm_uids = nuccore_uid_to_asm_uids.get(nuccore_uid, [])
+        for asm_uid in asm_uids:
+            gcf = asm_uid_to_gcf.get(asm_uid)
+            if gcf:
+                result[acc] = gcf
+                log.debug(f"  {acc} → {gcf}")
+                break
+        if result[acc] is None and asm_uids:
+            log.debug(f"  {acc}: assembly UID(s) {asm_uids} had no GCF_ accession in summary")
+
+    mapped = sum(1 for v in result.values() if v is not None)
+    log.info(f"map_genomic_to_assembly_elink: {mapped}/{len(accessions)} mapped")
+    return result
