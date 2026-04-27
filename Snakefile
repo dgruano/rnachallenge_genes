@@ -56,6 +56,7 @@ include: "workflow/rules/resolve_ncbi_genbank.smk"       # EPost→EFetch second
 include: "workflow/rules/resolve_ncbi_assembly_accessions.smk"  # Map NC_/NW_ → GCF_/GCA_
 include: "workflow/rules/resolve_abandoned_accessions.smk"  # GTF-based third-pass resolver
 include: "workflow/rules/merge_resolved.smk"             # unify all three DB streams
+include: "workflow/rules/resolve_ncbi_chromosome_accessions.smk"  # Map NC_/NT_/NW_ → GCF_/GCA_ post-merge
 include: "workflow/rules/download_assemblies.smk"        # checkpoint: cache genome FASTAs
 include: "workflow/rules/extract_sequences.smk"
 include: "workflow/rules/report.smk"
