@@ -588,3 +588,35 @@ def map_genomic_to_assembly_elink(
     mapped = sum(1 for v in result.values() if v is not None)
     log.info(f"map_genomic_to_assembly_elink: {mapped}/{len(accessions)} mapped")
     return result
+
+
+# ── UCSC→GCF mapping (shared by merge_resolved for noncode_v4/2016) ──────────
+
+EXTENDED_UCSC_TO_GCF: dict[str, str] = {
+    "TAIR10":   "GCF_000001735.4",   # Arabidopsis thaliana
+    "CE10":     "GCF_000002985.6",   # Caenorhabditis elegans (WBcel235)
+    "DM6":      "GCF_000001215.4",   # Drosophila melanogaster
+    "RN6":      "GCF_000001895.5",   # Rattus norvegicus
+    "MONDOM5":  "GCF_000002295.2",   # Monodelphis domesticus
+    "PONABE2":  "GCF_000001545.5",   # Pongo abelii
+    "GALGAL4":  "GCF_000002315.6",   # Gallus gallus (GRCg6a)
+    "ORNANA1":  "GCF_000002275.2",   # Ornithorhynchus anatinus
+    "BOSTAU6":  "GCF_000003055.6",   # Bos taurus (UMD 3.1.1)
+    "DANRER10": "GCF_000002035.6",   # Danio rerio (GRCz11)
+    # noncode_v4 extras not in the original noncode UCSC map
+    "DANRER7":  "GCF_000002035.5",   # Danio rerio (GRCz10)
+    "DM3":      "GCF_000001215.3",   # Drosophila melanogaster (BDGP5)
+    "GALGAL3":  "GCF_000002315.5",   # Gallus gallus (Gallus_gallus-2.1)
+}
+
+
+def apply_ucsc_to_gcf_mapping(df: pd.DataFrame, label: str) -> pd.DataFrame:
+    """Replace UCSC assembly names with GCF_ accessions in assembly_accession column."""
+    if df.empty or "assembly_accession" not in df.columns:
+        return df
+    result = df.copy()
+    result["assembly_accession"] = result["assembly_accession"].apply(
+        lambda v: EXTENDED_UCSC_TO_GCF.get(str(v).strip().upper(), v)
+        if pd.notna(v) else v
+    )
+    return result
