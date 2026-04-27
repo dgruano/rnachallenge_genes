@@ -48,6 +48,7 @@ ASSEMBLY_NAME_MAPPING = {
     "BDGP6": "GCF_000001215.4",      # Drosophila melanogaster (fruit fly)
     "BDGP5": "GCF_000001215.3",      # Drosophila melanogaster (older)
     "BDGP6_32": "GCF_000001215.4",   # Drosophila release variant
+    "ARS-UCD2.0": "GCF_002263795.2",  # Bos taurus (cattle ARS-UCD2.0)
 }
 
 RESOLVED_COLS = [
