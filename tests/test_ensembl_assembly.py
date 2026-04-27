@@ -77,6 +77,16 @@ class TestGRCNameMapping:
         result = map_grc_to_gcf(None)
         assert result is None
 
+    def test_map_ars_ucd2_to_gcf(self):
+        """Test mapping of ARS-UCD2.0 (Bos taurus) to GCF accession."""
+        result = map_grc_to_gcf("ARS-UCD2.0")
+        assert result == "GCF_002263795.2"
+
+    def test_map_ars_ucd2_case_insensitive(self):
+        """ARS-UCD2.0 mapping is case-insensitive."""
+        result = map_grc_to_gcf("ars-ucd2.0")
+        assert result == "GCF_002263795.2"
+
 
 class TestGRCAccessionDetection:
     """Test detection of GRC* assembly accessions."""

@@ -11,6 +11,7 @@ Functions:
   - download_gtf: Download and cache GTF files
   - extract_all_from_gtf: Extract coordinates by transcript ID
   - extract_annotations_by_geneid: Extract coordinates by NCBI Gene ID
+  - map_genomic_to_assembly_elink: Map genomic accessions (NC_/NT_/NW_) → assembly GCF_/GCA_
 """
 
 import gzip
@@ -441,4 +442,181 @@ def extract_annotations_by_geneid(
                 "strand":      feature["strand"],
             }
 
+    return result
+
+
+# ── Genomic accession → parent assembly via elink ────────────────────────────
+
+def map_genomic_to_assembly_elink(
+    accessions: list[str],
+    log: Optional[logging.Logger] = None,
+    max_retries: int = 3,
+    retry_wait: float = 0.5,
+) -> dict[str, Optional[str]]:
+    """
+    Map genomic accessions (NC_/NT_/NW_) to parent assembly accessions (GCF_/GCA_)
+    using three batched NCBI API calls instead of downloading full GenBank records.
+
+    Phase 1 — esearch(nuccore) per unique accession → nuccore UID
+    Phase 2 — batch elink(nuccore→assembly) → assembly UIDs
+    Phase 3 — batch esummary(assembly) → GCF_/GCA_ accession strings
+
+    Parameters
+    ----------
+    accessions : list of str
+        Genomic accessions, e.g. ["NC_000001.11", "NT_033779.5"]
+    log : logging.Logger, optional
+    max_retries : int
+    retry_wait : float
+
+    Returns
+    -------
+    dict[str, Optional[str]]
+        {accession: GCF_accession} — value is None when mapping failed.
+    """
+    if not accessions:
+        return {}
+
+    if log is None:
+        log = logging.getLogger(__name__)
+
+    result: dict[str, Optional[str]] = {acc: None for acc in accessions}
+
+    # ── Phase 1: accession string → nuccore UID (one esearch per accession) ──
+    acc_to_uid: dict[str, str] = {}
+    for acc in accessions:
+        def _search(a=acc):
+            handle = Entrez.esearch(db="nuccore", term=f"{a}[Accession]", retmax=1)
+            rec = Entrez.read(handle)
+            handle.close()
+            return rec
+
+        try:
+            rec = _retry_ncbi_call(_search, f"esearch(nuccore) {acc}", max_retries, retry_wait)
+        except RuntimeError as exc:
+            log.warning(str(exc))
+            continue
+
+        if rec["IdList"]:
+            acc_to_uid[acc] = rec["IdList"][0]
+        else:
+            log.debug(f"  {acc}: no nuccore record found")
+        time.sleep(_RATE_LIMIT_DELAY)
+
+    if not acc_to_uid:
+        log.warning("No nuccore UIDs retrieved — all accessions unresolvable")
+        return result
+
+    # ── Phase 2: batch elink nuccore → assembly ────────────────────────────
+    nuccore_uid_to_asm_uids: dict[str, list[str]] = {}
+    all_nuccore_uids = list(acc_to_uid.values())
+
+    for i in range(0, len(all_nuccore_uids), _BATCH_SIZE):
+        chunk = all_nuccore_uids[i : i + _BATCH_SIZE]
+
+        def _elink(c=chunk):
+            handle = Entrez.elink(dbfrom="nuccore", db="assembly", id=",".join(c))
+            links = Entrez.read(handle)
+            handle.close()
+            return links
+
+        try:
+            links = _retry_ncbi_call(
+                _elink,
+                f"elink(nuccore→assembly) chunk {i // _BATCH_SIZE + 1}",
+                max_retries,
+                retry_wait,
+            )
+        except RuntimeError as exc:
+            log.error(str(exc))
+            continue
+
+        for linkset in links:
+            from_uids = linkset.get("IdList", [])
+            asm_uids = [
+                link["Id"]
+                for lsdb in linkset.get("LinkSetDb", [])
+                for link in lsdb.get("Link", [])
+            ]
+            for fid in from_uids:
+                nuccore_uid_to_asm_uids.setdefault(fid, []).extend(asm_uids)
+        time.sleep(_RATE_LIMIT_DELAY)
+
+    # ── Phase 3: batch esummary(assembly) → GCF_ accession ────────────────
+    all_asm_uids = list({uid for uids in nuccore_uid_to_asm_uids.values() for uid in uids})
+    asm_uid_to_gcf: dict[str, str] = {}
+
+    for i in range(0, len(all_asm_uids), _BATCH_SIZE):
+        chunk = all_asm_uids[i : i + _BATCH_SIZE]
+
+        def _summary(c=chunk):
+            handle = Entrez.esummary(db="assembly", id=",".join(c), report="full")
+            summary = Entrez.read(handle)
+            handle.close()
+            return summary
+
+        try:
+            summary = _retry_ncbi_call(
+                _summary,
+                f"esummary(assembly) chunk {i // _BATCH_SIZE + 1}",
+                max_retries,
+                retry_wait,
+            )
+        except RuntimeError as exc:
+            log.error(str(exc))
+            continue
+
+        for doc in summary["DocumentSummarySet"]["DocumentSummary"]:
+            uid = doc.attributes.get("uid", "")
+            gcf = doc.get("AssemblyAccession", "")
+            if uid and gcf:
+                asm_uid_to_gcf[uid] = gcf
+        time.sleep(_RATE_LIMIT_DELAY)
+
+    # ── Assemble final result ─────────────────────────────────────────────
+    for acc, nuccore_uid in acc_to_uid.items():
+        asm_uids = nuccore_uid_to_asm_uids.get(nuccore_uid, [])
+        for asm_uid in asm_uids:
+            gcf = asm_uid_to_gcf.get(asm_uid)
+            if gcf:
+                result[acc] = gcf
+                log.debug(f"  {acc} → {gcf}")
+                break
+        if result[acc] is None and asm_uids:
+            log.debug(f"  {acc}: assembly UID(s) {asm_uids} had no GCF_ accession in summary")
+
+    mapped = sum(1 for v in result.values() if v is not None)
+    log.info(f"map_genomic_to_assembly_elink: {mapped}/{len(accessions)} mapped")
+    return result
+
+
+# ── UCSC→GCF mapping (shared by merge_resolved for noncode_v4/2016) ──────────
+
+EXTENDED_UCSC_TO_GCF: dict[str, str] = {
+    "TAIR10":   "GCF_000001735.4",   # Arabidopsis thaliana
+    "CE10":     "GCF_000002985.6",   # Caenorhabditis elegans (WBcel235)
+    "DM6":      "GCF_000001215.4",   # Drosophila melanogaster
+    "RN6":      "GCF_000001895.5",   # Rattus norvegicus
+    "MONDOM5":  "GCF_000002295.2",   # Monodelphis domesticus
+    "PONABE2":  "GCF_000001545.5",   # Pongo abelii
+    "GALGAL4":  "GCF_000002315.6",   # Gallus gallus (GRCg6a)
+    "ORNANA1":  "GCF_000002275.2",   # Ornithorhynchus anatinus
+    "BOSTAU6":  "GCF_000003055.6",   # Bos taurus (UMD 3.1.1)
+    "DANRER10": "GCF_000002035.6",   # Danio rerio (GRCz11)
+    # noncode_v4 extras not in the original noncode UCSC map
+    "DANRER7":  "GCF_000002035.5",   # Danio rerio (GRCz10)
+    "DM3":      "GCF_000001215.3",   # Drosophila melanogaster (BDGP5)
+    "GALGAL3":  "GCF_000002315.5",   # Gallus gallus (Gallus_gallus-2.1)
+}
+
+
+def apply_ucsc_to_gcf_mapping(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace UCSC assembly names with GCF_ accessions in assembly_accession column."""
+    if df.empty or "assembly_accession" not in df.columns:
+        return df
+    result = df.copy()
+    result["assembly_accession"] = result["assembly_accession"].apply(
+        lambda v: EXTENDED_UCSC_TO_GCF.get(str(v).strip().upper(), v)
+        if pd.notna(v) else v
+    )
     return result

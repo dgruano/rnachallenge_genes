@@ -19,6 +19,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
+from ncbi_assembly_utils import apply_ucsc_to_gcf_mapping
 
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("merge_resolved", snakemake.log[0])
@@ -155,8 +156,12 @@ df_yeast_gtf  = safe_read(in_yeast_gtf_res,  "yeast_gtf_resolved")
 df_yeast_gtf_unres = safe_read(in_yeast_gtf_unres, "yeast_gtf_unresolved")
 df_gramene    = safe_read(in_gramene_res,    "gramene_resolved")
 df_noncode = safe_read(in_noncode_res, "noncode_resolved")
-df_noncode_v4 = safe_read(in_noncode_v4_res, "noncode_v4_resolved")
-df_noncode_2016 = safe_read(in_noncode_2016_res, "noncode_2016_resolved")
+df_noncode_v4 = apply_ucsc_to_gcf_mapping(
+    safe_read(in_noncode_v4_res, "noncode_v4_resolved")
+)
+df_noncode_2016 = apply_ucsc_to_gcf_mapping(
+    safe_read(in_noncode_2016_res, "noncode_2016_resolved")
+)
 df_abandoned = safe_read(in_abandoned_res, "abandoned_resolved")
 df_amb_na = safe_read(in_ncbi_assembly_amb, "ncbi_assembly_ambiguous")
 df_amb_ens = safe_read(in_ensembl_amb, "ensembl_ambiguous")

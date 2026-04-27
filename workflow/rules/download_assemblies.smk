@@ -28,7 +28,7 @@
 
 checkpoint download_assemblies:
     input:
-        resolved = f"{RESULTS}/resolved_ids.tsv",
+        resolved = f"{RESULTS}/ncbi_chromosome_resolved.tsv",
     output:
         done = f"{RESULTS}/.assemblies_ready",
         downloaded = f"{RESULTS}/downloaded_assemblies.tsv",
