@@ -6,7 +6,7 @@ Unit tests for map_genomic_to_assembly_elink() added to ncbi_assembly_utils.
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import patch
 
 import pytest
 

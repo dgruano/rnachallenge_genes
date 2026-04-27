@@ -11,6 +11,7 @@ Functions:
   - download_gtf: Download and cache GTF files
   - extract_all_from_gtf: Extract coordinates by transcript ID
   - extract_annotations_by_geneid: Extract coordinates by NCBI Gene ID
+  - map_genomic_to_assembly_elink: Map genomic accessions (NC_/NT_/NW_) → assembly GCF_/GCA_
 """
 
 import gzip
