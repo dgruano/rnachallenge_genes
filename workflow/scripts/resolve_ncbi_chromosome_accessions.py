@@ -22,7 +22,6 @@ results/ncbi_chromosome_unresolved.tsv — rows whose chromosomal accession
 """
 
 import sys
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -32,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
 from ncbi_assembly_utils import set_entrez_credentials, map_genomic_to_assembly_elink
 
-_CHROMOSOMAL_PREFIXES = ("NC_", "NT_", "NW_", "AC_")
+_CHROMOSOMAL_PREFIXES = ("NC_", "NT_", "NW_")
 
 
 def is_chromosomal_accession(value) -> bool:
