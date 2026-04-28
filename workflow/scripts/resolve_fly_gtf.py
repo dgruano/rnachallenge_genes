@@ -29,8 +29,12 @@ out_resolved = snakemake.output.resolved
 out_unresolved = snakemake.output.unresolved
 
 cfg = snakemake.config.get("metazoa_gtf_sources", {}).get("flybase", {})
-ASSEMBLY_NAME = cfg.get("assembly_name", "BDGP6")
-ORGANISM = cfg.get("organism", "drosophila_melanogaster")
+ASSEMBLY_NAME      = cfg.get("assembly_name", "BDGP6")
+ASSEMBLY_ACCESSION = cfg.get("assembly_accession")
+FASTA_URL          = cfg.get("fasta_url")
+GTF_URL            = cfg.get("url")
+GTF_FORMAT         = cfg.get("gtf_format", "gtf")
+ORGANISM           = cfg.get("organism", "drosophila_melanogaster")
 
 FLYBASE_COORD_RE = re.compile(
     r"chromosome:(?P<assembly>[^:]+):(?P<chrom>[^:]+):(?P<start>\d+):(?P<end>\d+):(?P<strand>[-+_]?1)"
@@ -87,6 +91,10 @@ res_df, unres_df = resolve_classified_ids(
     db_source="flybase",
     organism=ORGANISM,
     assembly_name=ASSEMBLY_NAME,
+    assembly_accession=ASSEMBLY_ACCESSION,
+    fasta_url=FASTA_URL,
+    gtf_url=GTF_URL,
+    gtf_format=GTF_FORMAT,
     index=index,
     candidates_fn=generic_candidates,
     unresolved_reason="fly_gtf_not_resolved",
