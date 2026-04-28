@@ -68,7 +68,11 @@ RESOLVED_COLS = [
     "gene_id",
     "gene_symbol",
     "organism",
+    "assembly_name",
     "assembly_accession",
+    "fasta_url",
+    "gtf_url",
+    "gtf_format",
     "chrom",
     "start",
     "end",
@@ -141,6 +145,11 @@ log.info("Stage 2c: Resolving NCBI assembly accessions")
 
 df = pd.read_csv(input_resolved, sep="\t", dtype={"chrom": "object"})
 log.info(f"Loaded {len(df)} NCBI transcript(s)")
+
+# Ensure new schema columns exist (populated in later tasks; NA until then)
+for _col in ("assembly_name", "fasta_url", "gtf_url", "gtf_format"):
+    if _col not in df.columns:
+        df[_col] = pd.NA
 
 # Identify rows with NC_/NW_ accessions (those that need assembly mapping)
 needs_assembly = df[df["assembly_accession"].str.startswith(("NC_", "NW_"), na=False)]

@@ -66,7 +66,11 @@ RESOLVED_BASE_COLS = [
     "gene_id",
     "gene_symbol",
     "organism",
+    "assembly_name",
     "assembly_accession",
+    "fasta_url",
+    "gtf_url",
+    "gtf_format",
     "chrom",
     "start",
     "end",
@@ -101,7 +105,6 @@ def normalize_resolved_frame(
     normalized = frame.copy()
     alias_map = {
         "gene_name": "gene_symbol",
-        "assembly_name": "assembly_accession",
         "seqid": "chrom",
     }
     for src, dst in alias_map.items():

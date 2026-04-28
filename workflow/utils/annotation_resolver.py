@@ -10,7 +10,11 @@ RESOLVED_COLS = [
     "gene_id",
     "gene_symbol",
     "organism",
-    "assembly_accession",
+    "assembly_name",       # human-readable id (R64-5-1, GRCh38, NC_000001.11…)
+    "assembly_accession",  # GCF_/GCA_ if known at Stage 1; pd.NA otherwise
+    "fasta_url",           # HTTPS URL if in config; pd.NA otherwise
+    "gtf_url",             # HTTPS URL if in config; pd.NA otherwise
+    "gtf_format",          # "gtf" | "gff3" | pd.NA
     "chrom",
     "start",
     "end",
@@ -173,6 +177,10 @@ def build_resolved_row(
     organism: str,
     assembly_name: str,
     hit: dict,
+    assembly_accession=None,
+    fasta_url=None,
+    gtf_url=None,
+    gtf_format=None,
 ) -> dict:
     return {
         "transcript_id": transcript_id,
@@ -180,7 +188,11 @@ def build_resolved_row(
         "gene_id": hit.get("gene_id", ""),
         "gene_symbol": hit.get("gene_symbol", "") or hit.get("gene_id", ""),
         "organism": organism,
-        "assembly_accession": assembly_name,
+        "assembly_name": assembly_name,
+        "assembly_accession": assembly_accession if assembly_accession is not None else pd.NA,
+        "fasta_url": fasta_url if fasta_url is not None else pd.NA,
+        "gtf_url": gtf_url if gtf_url is not None else pd.NA,
+        "gtf_format": gtf_format if gtf_format is not None else pd.NA,
         "chrom": hit.get("chrom", ""),
         "start": hit.get("start", ""),
         "end": hit.get("end", ""),
@@ -209,6 +221,10 @@ def resolve_classified_ids(
     candidates_fn: Callable[[str], list[str]],
     unresolved_reason: str,
     pre_resolve_fn: Optional[Callable[[pd.Series], Optional[dict]]] = None,
+    assembly_accession=None,
+    fasta_url=None,
+    gtf_url=None,
+    gtf_format=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     source_df = classified_df[classified_df["db_source"].astype(str) == db_source].copy()
     resolved_rows = []
@@ -227,6 +243,10 @@ def resolve_classified_ids(
                         organism=organism,
                         assembly_name=assembly_name,
                         hit=index[candidate],
+                        assembly_accession=assembly_accession,
+                        fasta_url=fasta_url,
+                        gtf_url=gtf_url,
+                        gtf_format=gtf_format,
                     )
                     break
 
