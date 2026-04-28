@@ -123,7 +123,9 @@ rule report:
                 "resolve_ncbi_assembly_accessions",
                 "resolve_ensembl_assembly_accessions",
                 "resolve_noncode_assembly_accessions",
-                "download_assemblies",
+                "prepare_accession_list",
+                "download_assemblies_done",
+                "split_batches",
                 "extract_sequences",
             ]
         ),

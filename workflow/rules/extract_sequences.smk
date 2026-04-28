@@ -1,42 +1,102 @@
 # ============================================================
-# Rule: extract_sequences
+# Rules: per-batch sequence extraction (fan-out/aggregate)
 # ============================================================
 # Stage 4 — Extract Gene + Flanking Sequences
 #
-# For each resolved transcript:
-#   1. Extends gene coordinates by upstream_bp / downstream_bp
-#      (strand-aware, clamped to chromosome bounds)
-#   2. Extracts the sequence from the cached indexed assembly
-#      using samtools faidx
-#   3. Reverse-complements if gene is on minus strand
-#   4. Writes FASTA and BED outputs
+# DAG:
+#   split_batches  →  extract_sequences_batch (×N)  →  extract_sequences
 #
-# FASTA header format:
-#   >{transcript_id} gene={gene_id} symbol={gene_symbol} organism={organism}
-#   assembly={assembly} loc={chrom}:{ext_start}-{ext_end}({strand})
-#   upstream={upstream_bp} downstream={downstream_bp}
+# Per-batch outputs (results/sequences/):
+#   batch_NNNN.fasta
+#   batch_NNNN.bed
+#   batch_NNNN.failed.tsv
+#
+# Final outputs:
+#   results/output.fasta
+#   results/output.bed
+#   results/extraction_failed.tsv
 # ============================================================
 
-rule extract_sequences:
+
+def get_batch_ids(wildcards=None):
+    """Return list of batch IDs once split_batches has run."""
+    ck = checkpoints.split_batches.get()
+    with open(ck.output.manifest) as fh:
+        return [line.strip() for line in fh if line.strip()]
+
+
+checkpoint split_batches:
     input:
         resolved = f"{RESULTS}/resolved_ids.tsv",
+    output:
+        manifest  = f"{RESULTS}/batch_manifest.txt",
+        batch_dir = directory(f"{RESULTS}/batches"),
+    log:
+        f"{LOGS}/split_batches.log",
+    benchmark:
+        f"{BENCHMARKS}/split_batches.tsv",
+    params:
+        batch_size = config.get("extraction_batch_size", 5000),
+    resources:
+        slurm_partition = "compute",
+        runtime         = 5,
+        mem_mb          = 1024,
+        cpus_per_task   = 1,
+    script:
+        "../scripts/split_batches.py"
+
+
+rule extract_sequences_batch:
+    input:
+        resolved = f"{RESULTS}/batches/{{batch_id}}.tsv",
         sentinel = f"{RESULTS}/.assemblies_ready",
     output:
-        fasta = f"{RESULTS}/output.fasta",
-        bed   = f"{RESULTS}/output.bed",
-        failed  = f"{RESULTS}/extraction_failed.tsv",
+        fasta  = f"{RESULTS}/sequences/{{batch_id}}.fasta",
+        bed    = f"{RESULTS}/sequences/{{batch_id}}.bed",
+        failed = f"{RESULTS}/sequences/{{batch_id}}.failed.tsv",
     log:
-        f"{LOGS}/extract_sequences.log",
+        f"{LOGS}/extract_sequences/{{batch_id}}.log",
     benchmark:
-        f"{BENCHMARKS}/extract_sequences.tsv",
+        f"{BENCHMARKS}/extract_sequences/{{batch_id}}.tsv",
     params:
         upstream   = UPSTREAM,
         downstream = DOWNSTREAM,
         cache_dir  = CACHE,
     resources:
         slurm_partition = "compute",
-        runtime         = 120,
-        mem_mb          = 8192,
-        cpus_per_task   = 4,
+        runtime         = 60,
+        mem_mb          = 4096,
+        cpus_per_task   = 2,
     script:
         "../scripts/extract_sequences.py"
+
+
+rule extract_sequences:
+    input:
+        fastas  = lambda wc: expand(
+            f"{RESULTS}/sequences/{{batch_id}}.fasta",
+            batch_id=get_batch_ids(wc),
+        ),
+        beds    = lambda wc: expand(
+            f"{RESULTS}/sequences/{{batch_id}}.bed",
+            batch_id=get_batch_ids(wc),
+        ),
+        faileds = lambda wc: expand(
+            f"{RESULTS}/sequences/{{batch_id}}.failed.tsv",
+            batch_id=get_batch_ids(wc),
+        ),
+    output:
+        fasta  = f"{RESULTS}/output.fasta",
+        bed    = f"{RESULTS}/output.bed",
+        failed = f"{RESULTS}/extraction_failed.tsv",
+    log:
+        f"{LOGS}/extract_sequences.log",
+    benchmark:
+        f"{BENCHMARKS}/extract_sequences.tsv",
+    resources:
+        slurm_partition = "compute",
+        runtime         = 15,
+        mem_mb          = 2048,
+        cpus_per_task   = 1,
+    script:
+        "../scripts/aggregate_sequences.py"

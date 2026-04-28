@@ -48,6 +48,9 @@ ncbi_batch_size: 200  # NCBI recommends < 500
 # "warn_continue": Log warning and produce empty output (development mode)
 biomart_on_failure: "warn_continue"
 
+# --- Sequence extraction batching ---
+extraction_batch_size: 5000
+
 # --- External ID resolution ---
 # Use common Ensembl REST endpoint for all species (plants subdomain is frequently down).
 ensembl_rest_base: "https://rest.ensembl.org"
