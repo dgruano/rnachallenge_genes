@@ -60,9 +60,13 @@ out_resolved   = snakemake.output.resolved
 out_unresolved = snakemake.output.unresolved
 
 cfg = snakemake.config
-_YEAST_SRC    = cfg.get("yeast_gtf_sources", {}).get("saccharomyces_cerevisiae", {})
-ASSEMBLY_NAME = _YEAST_SRC.get("assembly_name", "R64")
-ORGANISM      = "saccharomyces_cerevisiae"
+_YEAST_SRC        = cfg.get("yeast_gtf_sources", {}).get("saccharomyces_cerevisiae", {})
+ASSEMBLY_NAME     = _YEAST_SRC.get("assembly_name", "R64")
+ASSEMBLY_ACCESSION = _YEAST_SRC.get("assembly_accession")
+FASTA_URL         = _YEAST_SRC.get("fasta_url")
+GTF_URL           = _YEAST_SRC.get("url")
+GTF_FORMAT        = _YEAST_SRC.get("gtf_format", "gff3")
+ORGANISM          = "saccharomyces_cerevisiae"
 
 # Feature types in the SGD GFF3 that represent gene-level entries
 _GENE_TYPES = {
@@ -103,6 +107,10 @@ res_df, unres_out = resolve_classified_ids(
     db_source="sgd",
     organism=ORGANISM,
     assembly_name=ASSEMBLY_NAME,
+    assembly_accession=ASSEMBLY_ACCESSION,
+    fasta_url=FASTA_URL,
+    gtf_url=GTF_URL,
+    gtf_format=GTF_FORMAT,
     index=gene_index,
     candidates_fn=yeast_candidates,
     unresolved_reason="sgd_gtf_not_resolved",
