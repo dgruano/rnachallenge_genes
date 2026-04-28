@@ -21,4 +21,7 @@ yeast_gtf_sources:
   saccharomyces_cerevisiae:
     url: "http://sgd-archive.yeastgenome.org/curation/chromosomal_feature/saccharomyces_cerevisiae.gff.gz"
     assembly_name: "R64-5-1"
+    assembly_accession: "GCF_000146045.2"
+    fasta_url: "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/146/045/GCF_000146045.2_R64/GCF_000146045.2_R64_genomic.fna.gz"
+    gtf_format: "gff3"
     release: "R64-5-1_20231010"

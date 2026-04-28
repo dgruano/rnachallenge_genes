@@ -20,27 +20,42 @@ plant_gtf_sources:
   arabidopsis_thaliana:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.60.gtf.gz"
     assembly_name: "TAIR10"
+    assembly_accession: "GCF_000001735.4"
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   oryza_sativa:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/oryza_sativa/Oryza_sativa.IRGSP-1.0.60.gtf.gz"
     assembly_name: "IRGSP-1.0"
+    assembly_accession: null
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/oryza_sativa/dna/Oryza_sativa.IRGSP-1.0.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   zea_mays:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/zea_mays/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.60.gtf.gz"
     assembly_name: "Zm-B73-REFERENCE-NAM-5.0"
+    assembly_accession: null
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   solanum_lycopersicum_cnit:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/solanum_lycopersicum/Solanum_lycopersicum.SL3.0.60.gtf.gz"
     assembly_name: "SL3.0"
+    assembly_accession: null
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/solanum_lycopersicum/dna/Solanum_lycopersicum.SL3.0.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   solanum_lycopersicum:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-30/gtf/solanum_lycopersicum/Solanum_lycopersicum.GCA_000188115.2.30.gtf.gz"
-    release: "30"
     assembly_name: "GCA_000188115.2"
+    assembly_accession: "GCA_000188115.2"
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-30/fasta/solanum_lycopersicum/dna/Solanum_lycopersicum.GCA_000188115.2.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
+    release: "30"
     notes: >
       LGC used Ensembl version 30
 
@@ -48,37 +63,58 @@ plant_gtf_sources:
   glycine_max:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/glycine_max/Glycine_max.Glycine_max_v2.1.60.gtf.gz"
     assembly_name: "Glycine_max_v2.1"
+    assembly_accession: null
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/glycine_max/dna/Glycine_max.Glycine_max_v2.1.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   solanum_tuberosum:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/solanum_tuberosum/Solanum_tuberosum.SolTub_3.0.60.gtf.gz"
     assembly_name: "SolTub_3.0"
+    assembly_accession: null
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/solanum_tuberosum/dna/Solanum_tuberosum.SolTub_3.0.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   # ── Issue 5: Phytozome-format plant IDs ───────────────────────────
   brachypodium_distachyon:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/brachypodium_distachyon/Brachypodium_distachyon.Brachypodium_distachyon_v3.0.60.gtf.gz"
     assembly_name: "v3.0"
+    assembly_accession: "GCF_000005505.3"
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/brachypodium_distachyon/dna/Brachypodium_distachyon.Brachypodium_distachyon_v3.0.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   vitis_vinifera:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/vitis_vinifera/Vitis_vinifera.PN40024.v4.60.gtf.gz"
     assembly_name: "PN40024.v4"
+    assembly_accession: null
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/vitis_vinifera/dna/Vitis_vinifera.PN40024.v4.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   manihot_esculenta:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/manihot_esculenta/Manihot_esculenta.M.esculenta_v8.60.gtf.gz"
     assembly_name: "M.esculenta_v8"
+    assembly_accession: null
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/manihot_esculenta/dna/Manihot_esculenta.M.esculenta_v8.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   sorghum_bicolor:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/sorghum_bicolor/Sorghum_bicolor.Sorghum_bicolor_NCBIv3.60.gtf.gz"
     assembly_name: "Sorghum_bicolor_NCBIv3"
+    assembly_accession: "GCF_000003195.3"
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/sorghum_bicolor/dna/Sorghum_bicolor.Sorghum_bicolor_NCBIv3.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
   selaginella_moellendorffii:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/selaginella_moellendorffii/Selaginella_moellendorffii.v1.0.60.gtf.gz"
     assembly_name: "v1.0"
+    assembly_accession: null
+    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/selaginella_moellendorffii/dna/Selaginella_moellendorffii.v1.0.dna.toplevel.fa.gz"
+    gtf_format: "gtf"
     release: "60"
 
 
