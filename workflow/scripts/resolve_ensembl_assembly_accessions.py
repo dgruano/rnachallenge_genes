@@ -57,13 +57,30 @@ RESOLVED_COLS = [
     "gene_id",
     "gene_symbol",
     "organism",
+    "assembly_name",
     "assembly_accession",
+    "fasta_url",
+    "gtf_url",
+    "gtf_format",
     "chrom",
     "start",
     "end",
     "strand",
     "is_ambiguous",
 ]
+
+# Canonical FTP assembly name for builds that live on ftp.ensembl.org (vertebrates only)
+ASSEMBLY_ENSEMBL_FTP: dict[str, str] = {
+    "GRCH38": "GRCh38",
+    "GRCH37": "GRCh37",
+    "GRCZ11": "GRCz11",
+    "GRCZ10": "GRCz10",
+    "GRCM39": "GRCm39",
+    "GRCM38": "GRCm38",
+    "ARS-UCD2.0": "ARS-UCD2.0",
+    # GRCRH1 (Macaca), GRCH13 (Ciona), BDGP6/5 (Drosophila): handled by
+    # dedicated resolvers or EnsemblGenomes; fasta_url/gtf_url left as NA
+}
 
 
 def normalize_build_name(build: str) -> str:
@@ -97,8 +114,25 @@ def map_grc_to_gcf(assembly_name: str) -> Optional[str]:
     return ASSEMBLY_NAME_MAPPING.get(normalized)
 
 
+def ensembl_ftp_urls(
+    organism: str, assembly_name: str, release: str
+) -> tuple[Optional[str], Optional[str]]:
+    """Return (fasta_url, gtf_url) for a vertebrate Ensembl assembly.
+
+    Returns (None, None) if any parameter is missing.
+    """
+    if not organism or not assembly_name or not release:
+        return None, None
+    species_cap = "_".join(w.capitalize() for w in organism.split("_"))
+    base = f"https://ftp.ensembl.org/pub/release-{release}"
+    fasta_url = f"{base}/fasta/{organism}/dna/{species_cap}.{assembly_name}.dna.toplevel.fa.gz"
+    gtf_url = f"{base}/gtf/{organism}/{species_cap}.{assembly_name}.{release}.gtf.gz"
+    return fasta_url, gtf_url
+
+
 def filter_and_resolve_ensembl(
     df: pd.DataFrame,
+    ensembl_release: str = "",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Filter Ensembl rows with GRC* assembly names and attempt mapping.
@@ -127,7 +161,16 @@ def filter_and_resolve_ensembl(
         mapped = map_grc_to_gcf(str(assembly_val))
         if mapped:
             row_dict = row.to_dict()
+            normalized = normalize_build_name(str(assembly_val))
+            row_dict["assembly_name"] = ASSEMBLY_ENSEMBL_FTP.get(normalized, str(assembly_val))
             row_dict["assembly_accession"] = mapped
+            asm_ftp_name = ASSEMBLY_ENSEMBL_FTP.get(normalized)
+            if asm_ftp_name:
+                organism = str(row.get("organism", "")).strip()
+                fasta_url, gtf_url = ensembl_ftp_urls(organism, asm_ftp_name, ensembl_release)
+                row_dict["fasta_url"] = fasta_url
+                row_dict["gtf_url"] = gtf_url
+                row_dict["gtf_format"] = "gtf"
             resolved_rows.append(row_dict)
         else:
             # Could not map - goes to unresolved
@@ -159,14 +202,21 @@ if 'snakemake' in globals():
 
     log.info(f"Loaded {len(df)} Ensembl transcript(s)")
 
+    # Ensure new schema columns exist
+    for _col in ("assembly_name", "fasta_url", "gtf_url", "gtf_format"):
+        if _col not in df.columns:
+            df[_col] = pd.NA
+
     # Validate required columns
     required_columns = ["transcript_id", "assembly_accession"]
     missing = [c for c in required_columns if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
+    ensembl_release = str(snakemake.config.get("ensembl_release", ""))
+
     # Filter and resolve using the dedicated function
-    resolved, unresolved = filter_and_resolve_ensembl(df)
+    resolved, unresolved = filter_and_resolve_ensembl(df, ensembl_release=ensembl_release)
 
     # Log statistics
     grc_mask = df["assembly_accession"].apply(is_grc_assembly_accession)
