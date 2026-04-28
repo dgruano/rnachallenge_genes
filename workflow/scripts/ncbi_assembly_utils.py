@@ -166,6 +166,9 @@ def resolve_assembly_ftp(
                 f"{ftp_path}/{prefix}_genomic.gtf.gz",
                 f"{ftp_path}/{prefix}_genomic.gff.gz",
             ],
+            "gtf_url": f"{ftp_path}/{prefix}_genomic.gtf.gz",
+            "fasta_url": f"{ftp_path}/{prefix}_genomic.fna.gz",
+            "assembly_name": "_".join(prefix.split("_")[2:]),
             "organism": organism,
         }
 
