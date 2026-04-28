@@ -165,6 +165,7 @@ def filter_and_resolve_noncode(
         mapped = map_ucsc_to_gcf(str(assembly_val))
         if mapped:
             row_dict = row.to_dict()
+            row_dict["assembly_name"] = str(assembly_val)   # UCSC name as human-readable ID
             row_dict["assembly_accession"] = mapped
             resolved_rows.append(row_dict)
         else:
@@ -196,6 +197,11 @@ if 'snakemake' in globals():
         raise
 
     log.info(f"Loaded {len(df)} NONCODE transcript(s)")
+
+    # Ensure new schema columns exist
+    for _col in ("assembly_name", "fasta_url", "gtf_url", "gtf_format"):
+        if _col not in df.columns:
+            df[_col] = pd.NA
 
     # Validate required columns
     required_columns = ["transcript_id", "assembly_accession"]
