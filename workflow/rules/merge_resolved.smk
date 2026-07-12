@@ -52,6 +52,10 @@ rule merge_resolved:
         gramene_unresolved   = f"{RESULTS}/gramene_unresolved.tsv",
         noncode_v4_unresolved   = f"{RESULTS}/noncode_v4_unresolved.tsv",
         noncode_2016_unresolved = f"{RESULTS}/noncode_2016_unresolved.tsv",
+        # Stage 2 config-DB URL tables
+        plant_assembly_urls   = f"{RESULTS}/plant_assembly_urls.tsv",
+        metazoa_assembly_urls = f"{RESULTS}/metazoa_assembly_urls.tsv",
+        yeast_assembly_urls   = f"{RESULTS}/yeast_assembly_urls.tsv",
     output:
         resolved  = f"{RESULTS}/resolved_ids.tsv",
         ambiguous = f"{RESULTS}/ambiguous.tsv",
