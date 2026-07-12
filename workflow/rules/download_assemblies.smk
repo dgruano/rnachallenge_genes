@@ -79,6 +79,8 @@ rule download_assembly:
         mem_mb           = 2048,
         cpus_per_task    = 1,
         ncbi_connections = 1,
+    envmodules:
+        "samtools/1.23.1"
     script:
         "../scripts/download_assembly.py"
 

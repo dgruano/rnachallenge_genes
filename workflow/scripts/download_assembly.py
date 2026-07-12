@@ -187,6 +187,25 @@ def ncbi_fasta_url(accession: str) -> Optional[str]:
         return None
 
 
+def fetch_assembly_report(accession: str, asm_dir: Path, label: str) -> None:
+    """Best-effort cache of NCBI *_assembly_report.txt for chrom-name translation.
+
+    The report is the sibling of the genomic FASTA on the FTP folder; derive its
+    URL by swapping the suffix. Non-fatal and idempotent: a missing report just
+    means extract falls back to the chr-prefix toggle for this assembly.
+    """
+    report_out = asm_dir / "assembly_report.txt"
+    if report_out.exists():
+        return
+    fasta_url = ncbi_fasta_url(accession)
+    if not fasta_url:
+        log.warning(f"  [{label}] No FASTA URL — skipping assembly report fetch")
+        return
+    report_url = fasta_url.replace("_genomic.fna.gz", "_assembly_report.txt")
+    if not download_file(report_url, report_out, f"{label}:report"):
+        log.warning(f"  [{label}] Assembly report unavailable (non-fatal)")
+
+
 # ── Main logic (returns status string) ───────────────────────
 def run_download(accession: str) -> str:
     """
@@ -204,6 +223,7 @@ def run_download(accession: str) -> str:
     # Case 1: already fully cached
     if fai_out.exists() and fasta_out.exists():
         log.info(f"  [{label}] Already cached and indexed — nothing to do")
+        fetch_assembly_report(accession, asm_dir, label)
         return "ok"
 
     asm_dir.mkdir(parents=True, exist_ok=True)
@@ -213,6 +233,7 @@ def run_download(accession: str) -> str:
         log.info(f"  [{label}] FASTA exists but .fai missing — re-indexing")
         if not index_fasta(fasta_out, label):
             return "failed: samtools faidx failed on existing FASTA"
+        fetch_assembly_report(accession, asm_dir, label)
         return "ok"
 
     # Case 3: full download required
@@ -240,6 +261,7 @@ def run_download(accession: str) -> str:
     if not index_fasta(fasta_out, label):
         return "failed: samtools faidx failed"
 
+    fetch_assembly_report(accession, asm_dir, label)
     log.info(f"  [{label}] Ready: {fasta_out}")
     return "ok"
 
