@@ -27,7 +27,7 @@ def get_batch_ids(wildcards=None):
 
 checkpoint split_batches:
     input:
-        resolved = f"{RESULTS}/resolved_ids.tsv",
+        resolved = f"{RESULTS}/ncbi_chromosome_resolved.tsv",
     output:
         manifest  = f"{RESULTS}/batch_manifest.txt",
         batch_dir = directory(f"{RESULTS}/batches"),
@@ -65,8 +65,8 @@ rule extract_sequences_batch:
     resources:
         slurm_partition = "compute",
         runtime         = 60,
-        mem_mb          = 4096,
-        cpus_per_task   = 2,
+        mem_mb          = 2048,
+        cpus_per_task   = 1,
     script:
         "../scripts/extract_sequences.py"
 
