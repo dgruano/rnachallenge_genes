@@ -44,6 +44,7 @@ include: "workflow/rules/biomart_plant_batch.smk"        # BioMart batch for pla
 include: "workflow/rules/resolve_plant_gtf.smk"          # GTF fallback for BioMart failures
 include: "workflow/rules/resolve_phytozome_gtf.smk"      # GFF3 fallback for Phytozome-backed plant IDs
 include: "workflow/rules/gramene_resolver.smk"           # Gramene API for legacy IDs
+include: "workflow/rules/stage2_config_db_urls.smk"      # Build config-backed assembly URL tables (plant/metazoa/yeast)
 include: "workflow/rules/detect_ensembl_species.smk"     # checkpoint: infer species
 include: "workflow/rules/biomart_lookup.smk"             # wrapper: per-species BioMart
 include: "workflow/rules/join_ensembl_results.smk"       # join BioMart tables → Ensembl resolved
