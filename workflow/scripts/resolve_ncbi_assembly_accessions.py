@@ -51,13 +51,14 @@ log = get_logger("resolve_ncbi_assembly_accessions", snakemake.log[0])
 input_resolved = snakemake.input.resolved
 out_resolved = snakemake.output.resolved
 out_unresolved = snakemake.output.unresolved
+out_ambiguous = snakemake.output.ambiguous
 cfg = snakemake.config
 
 set_entrez_credentials(cfg["ncbi_email"], cfg.get("ncbi_api_key"))
 
 MAX_RETRIES = int(cfg.get("max_retries", 3))
 RETRY_WAIT = float(cfg.get("retry_wait_seconds", 0.5))
-EFETCH_BATCH_SIZE = 50
+EFETCH_BATCH_SIZE = 200
 
 RESOLVED_COLS = [
     "transcript_id",
@@ -115,7 +116,8 @@ def map_genomic_to_assembly(accessions: list[str]) -> dict[str, Optional[str]]:
                 records = SeqIO.parse(handle, "genbank")
 
                 for record in records:
-                    acc = record.id.split(".")[0] + ("." + record.id.split(".")[-1] if "." in record.id else "")
+                    parts = record.id.split(".")
+                    acc = parts[0] + ("." + parts[-1] if len(parts) > 1 else "")
                     asm_acc = _extract_assembly_from_genomic_record(record)
                     if asm_acc:
                         results[acc] = asm_acc
@@ -144,7 +146,7 @@ df = pd.read_csv(input_resolved, sep="\t", dtype={"chrom": "object"})
 log.info(f"Loaded {len(df)} NCBI transcript(s)")
 
 # Ensure new schema columns exist (populated in later tasks; NA until then)
-for _col in ("assembly_name", "fasta_url", "gtf_url", "gtf_format"):
+for _col in ("assembly_name", "fasta_url", "gtf_url", "gtf_format", "is_ambiguous"):
     if _col not in df.columns:
         df[_col] = pd.NA
 
@@ -159,6 +161,7 @@ if len(needs_assembly) == 0:
     pd.DataFrame(columns=["transcript_id", "db_source", "reason"]).to_csv(
         out_unresolved, sep="\t", index=False
     )
+    pd.DataFrame(columns=RESOLVED_COLS).to_csv(out_ambiguous, sep="\t", index=False)
     log.info("Done.")
     sys.exit(0)
 
@@ -173,24 +176,25 @@ log.info(f"Successfully mapped {mapped_count}/{len(unique_genomic)} genomic acce
 resolved_rows = []
 unresolved_rows = []
 
-for idx, row in needs_assembly.iterrows():
-    genomic_acc = row["assembly_accession"]
+for row_dict in needs_assembly.to_dict("records"):
+    genomic_acc = row_dict["assembly_accession"]
     asm_acc = genomic_to_asm.get(genomic_acc)
 
     if asm_acc is None:
-        log.debug(f"  {row['transcript_id']}: assembly mapping failed for {genomic_acc}")
+        log.debug(f"  {row_dict['transcript_id']}: assembly mapping failed for {genomic_acc}")
         unresolved_rows.append({
-            "transcript_id": row["transcript_id"],
-            "db_source": row["db_source"],
+            "transcript_id": row_dict["transcript_id"],
+            "db_source": row_dict["db_source"],
             "reason": f"assembly_mapping_failed:{genomic_acc}",
         })
-        continue
+    else:
+        row_dict["assembly_accession"] = asm_acc
+        resolved_rows.append(row_dict)
 
-    row_copy = row.copy()
-    row_copy["assembly_accession"] = asm_acc
-    resolved_rows.append(row_copy)
-
-df_mapped = pd.concat([df[~df.index.isin(needs_assembly.index)]] + [pd.DataFrame(resolved_rows)], ignore_index=True)
+df_mapped = pd.concat(
+    [df[~df.index.isin(needs_assembly.index)], pd.DataFrame(resolved_rows)],
+    ignore_index=True
+)
 log.info(f"Mapped {len(resolved_rows)} row(s); {len(unresolved_rows)} unresolvable")
 
 if len(df_mapped) == 0:
@@ -199,6 +203,7 @@ if len(df_mapped) == 0:
     pd.DataFrame(unresolved_rows, columns=["transcript_id", "db_source", "reason"]).to_csv(
         out_unresolved, sep="\t", index=False
     )
+    pd.DataFrame(columns=RESOLVED_COLS).to_csv(out_ambiguous, sep="\t", index=False)
     sys.exit(0)
 
 # Step 3: Resolve FTP URLs (fasta_url, gtf_url) for all unique GCF_/GCA_ assemblies
@@ -209,16 +214,20 @@ asm_ftp_info = resolve_assembly_ftp(list(unique_asms), log=log, max_retries=MAX_
 log.info(f"Resolved FTP info for {len(asm_ftp_info)} assembly(ies)")
 
 # Step 4: Propagate assembly_name, fasta_url, gtf_url, gtf_format into df_mapped
-for idx, row in df_mapped.iterrows():
-    asm_acc = row.get("assembly_accession")
-    if pd.isna(asm_acc) or asm_acc not in asm_ftp_info:
-        continue
-    info = asm_ftp_info[asm_acc]
-    df_mapped.at[idx, "gtf_url"] = info["gtf_url"]
-    df_mapped.at[idx, "fasta_url"] = info["fasta_url"]
-    df_mapped.at[idx, "gtf_format"] = "gtf"
-    if pd.isna(row.get("assembly_name")):
-        df_mapped.at[idx, "assembly_name"] = info.get("assembly_name", asm_acc)
+mask = df_mapped["assembly_accession"].isin(asm_ftp_info)
+
+df_mapped.loc[mask, "gtf_url"] = df_mapped.loc[mask, "assembly_accession"].map(
+    lambda x: asm_ftp_info[x]["gtf_url"]
+)
+df_mapped.loc[mask, "fasta_url"] = df_mapped.loc[mask, "assembly_accession"].map(
+    lambda x: asm_ftp_info[x]["fasta_url"]
+)
+df_mapped.loc[mask, "gtf_format"] = "gtf"
+
+mask_name = mask & df_mapped["assembly_name"].isna()
+df_mapped.loc[mask_name, "assembly_name"] = df_mapped.loc[mask_name, "assembly_accession"].map(
+    lambda x: asm_ftp_info[x].get("assembly_name", x)
+)
 
 # Step 5: Write outputs
 log.info(f"Writing {len(df_mapped)} resolved row(s) to {out_resolved}")
@@ -233,5 +242,7 @@ else:
     pd.DataFrame(columns=["transcript_id", "db_source", "reason"]).to_csv(
         out_unresolved, sep="\t", index=False
     )
+
+pd.DataFrame(columns=RESOLVED_COLS).to_csv(out_ambiguous, sep="\t", index=False)
 
 log.info("Done.")
