@@ -20,7 +20,7 @@
 #       genome.fasta.fai   (created by script on success)
 #
 # Output:
-#   results/assembly_accessions.txt   — deduplicated GCF_/GCA_ list
+#   results/assembly_download_manifest.tsv — cache_key/fasta_url manifest
 #   results/downloaded_assemblies.tsv — successfully downloaded rows
 #   results/unresolved_assemblies.tsv — non-GCF_/GCA_ + failed rows with fail_detail
 #   results/.assemblies_ready         — sentinel for extract_sequences
@@ -28,17 +28,29 @@
 
 
 def get_assemblies(wildcards=None):
-    """Return list of GCF_/GCA_ accessions once prepare_accession_list has run."""
+    """Return list of manifest cache keys once prepare_accession_list has run."""
     ck = checkpoints.prepare_accession_list.get()
-    with open(ck.output.accession_list) as fh:
-        return [line.strip() for line in fh if line.strip()]
+    import pandas as pd
+
+    manifest = pd.read_csv(ck.output.accession_list, sep="\t")
+    if manifest.empty or "cache_key" not in manifest.columns:
+        return []
+    return (
+        manifest["cache_key"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .loc[lambda s: s.ne("")]
+        .drop_duplicates()
+        .tolist()
+    )
 
 
 checkpoint prepare_accession_list:
     input:
         resolved = f"{RESULTS}/ncbi_chromosome_resolved.tsv",
     output:
-        accession_list = f"{RESULTS}/assembly_accessions.txt",
+        accession_list = f"{RESULTS}/assembly_download_manifest.tsv",
     log:
         f"{LOGS}/prepare_accession_list.log",
     benchmark:
@@ -49,24 +61,23 @@ checkpoint prepare_accession_list:
         mem_mb          = 512,
         cpus_per_task   = 1,
     run:
+        import sys
         from pathlib import Path
         import pandas as pd
+
+        sys.path.insert(0, str(Path("workflow/scripts").resolve()))
+        from download_manifest_utils import build_download_manifest
+
         df = pd.read_csv(input.resolved, sep="\t")
-        accessions = (
-            df["assembly_accession"]
-            .dropna()
-            .astype(str)
-            .str.strip()
-            .loc[lambda s: s.str.match(r"GC[FA]_\d+\.\d+")]
-            .drop_duplicates()
-            .tolist()
-        )
-        Path(output.accession_list).write_text("\n".join(accessions) + "\n")
+        manifest = build_download_manifest(df)
+        manifest.to_csv(output.accession_list, sep="\t", index=False)
 
 
 rule download_assembly:
+    input:
+        manifest = f"{RESULTS}/assembly_download_manifest.tsv",
     wildcard_constraints:
-        accession = r"GC[FA]_\d+\.\d+",
+        accession = r"[A-Za-z0-9._-]+",
     output:
         status = f"{CACHE}/{{accession}}/.download_done",
     log:
@@ -95,7 +106,7 @@ rule download_assemblies_done:
             f"{LOGS}/download_assembly/{{accession}}.log",
             accession=get_assemblies(wc),
         ),
-        accession_list = f"{RESULTS}/assembly_accessions.txt",
+        accession_list = f"{RESULTS}/assembly_download_manifest.tsv",
         resolved       = f"{RESULTS}/ncbi_chromosome_resolved.tsv",
     output:
         done       = f"{RESULTS}/.assemblies_ready",
