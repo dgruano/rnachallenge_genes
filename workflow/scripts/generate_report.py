@@ -18,6 +18,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
+from report_utils import df_to_html_table, failure_summary_rows, next_actions_html, report_intro_html, stat_card
 
 log          = get_logger("generate_report", snakemake.log[0])
 out_html     = snakemake.output.html
@@ -28,6 +29,8 @@ RELEASE      = snakemake.params.release
 in_classified      = snakemake.input.classified
 in_resolved        = snakemake.input.resolved
 in_unresolved      = snakemake.input.unresolved
+in_unmatched       = snakemake.input.unmatched
+in_not_found       = snakemake.input.not_found
 in_ambiguous       = snakemake.input.ambiguous
 in_species_map     = snakemake.input.species_map
 in_unknown_pfx     = snakemake.input.unknown_prefixes
@@ -67,6 +70,8 @@ log.info("Generating HTML summary report")
 df_cls    = pd.read_csv(in_classified,  sep="\t")
 df_res    = pd.read_csv(in_resolved,    sep="\t")
 df_unr    = pd.read_csv(in_unresolved,  sep="\t")
+df_unmatched = pd.read_csv(in_unmatched, sep="\t") if Path(in_unmatched).exists() else pd.DataFrame()
+df_not_found = pd.read_csv(in_not_found, sep="\t") if Path(in_not_found).exists() else pd.DataFrame()
 df_amb    = pd.read_csv(in_ambiguous,   sep="\t")
 df_spmap  = pd.read_csv(in_species_map, sep="\t")
 df_unkpfx = pd.read_csv(in_unknown_pfx, sep="\t") if Path(in_unknown_pfx).exists() else pd.DataFrame()
@@ -144,25 +149,19 @@ if "organism" in df_res.columns:
     for sp, cnt in df_res["organism"].value_counts().head(20).items():
         species_rows_html += f"<tr><td>{sp}</td><td>{cnt}</td></tr>"
 
-# ── Helpers ───────────────────────────────────────────────────
-def df_to_html_table(df: pd.DataFrame, max_rows: int = 200) -> str:
-    if df.empty:
-        return "<p><em>No data.</em></p>"
-    if len(df) > max_rows:
-        df = df.head(max_rows)
-        footer = f"<p><em>Showing first {max_rows} rows.</em></p>"
-    else:
-        footer = ""
-    return df.to_html(index=False, border=0, classes="data-table") + footer
-
-def stat_card(label, value, color="#3b82f6"):
-    return f"""<div class="stat-card">
-      <div class="stat-value" style="color:{color}">{value}</div>
-      <div class="stat-label">{label}</div></div>"""
-
 # ── Stats ─────────────────────────────────────────────────────
-total_input  = len(df_cls) + len(df_unr)
+n_unclassified = len(df_unmatched)
+n_classified_unresolved = len(df_not_found)
+n_unresolved_total = n_unclassified + n_classified_unresolved
+total_input = len(df_cls) + n_unclassified
 now          = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+if len(df_unr) != n_unresolved_total:
+  log.warning(
+    "unresolved.tsv count (%s) != pattern_unmatched + matched_not_found (%s)",
+    len(df_unr),
+    n_unresolved_total,
+  )
 
 # Pipeline funnel
 _asm = df_res["assembly_accession"] if "assembly_accession" in df_res.columns else pd.Series(dtype=str)
@@ -174,17 +173,33 @@ def _pct(num, denom):
     return f"{100*num/denom:.0f}%" if denom else "—"
 
 funnel_rows = [
-    ("Input IDs",             total_input,      _pct(total_input,    total_input)),
-    ("Classified",            len(df_cls),       _pct(len(df_cls),    total_input)),
-    ("Resolved",              len(df_res),       _pct(len(df_res),    total_input)),
-    ("Has assembly accession",n_has_assembly,    _pct(n_has_assembly, len(df_res))),
-    ("Has coordinates",       n_has_coords,      _pct(n_has_coords,   len(df_res))),
-    ("Sequence extracted",    fasta_count,       _pct(fasta_count,    len(df_res))),
-    ("Extraction failed",     n_total_failed,    _pct(n_total_failed, len(df_res))),
+  ("Input IDs",                  total_input,               _pct(total_input, total_input)),
+  ("Classified",                 len(df_cls),               _pct(len(df_cls), total_input)),
+  ("Unclassified",               n_unclassified,            _pct(n_unclassified, total_input)),
+  ("Resolved",                   len(df_res),               _pct(len(df_res), len(df_cls))),
+  ("Classified but unresolved",  n_classified_unresolved,   _pct(n_classified_unresolved, len(df_cls))),
+  ("Has assembly accession",     n_has_assembly,            _pct(n_has_assembly, len(df_res))),
+  ("Has coordinates",            n_has_coords,              _pct(n_has_coords, len(df_res))),
+  ("Sequence extracted",         fasta_count,               _pct(fasta_count, len(df_res))),
+  ("Extraction failed",          n_total_failed,            _pct(n_total_failed, len(df_res))),
 ]
 funnel_html = "".join(
     f"<tr><td>{step}</td><td>{cnt}</td><td>{pct}</td></tr>"
     for step, cnt, pct in funnel_rows
+)
+
+input_lhs = total_input
+input_rhs = len(df_cls) + n_unclassified
+unresolved_lhs = len(df_unr)
+unresolved_rhs = n_unresolved_total
+consistency_html = (
+  "<div class='info-box'>"
+  "<strong>Consistency checks</strong><br>"
+  f"Input IDs ({input_lhs}) = Classified ({len(df_cls)}) + Unclassified ({n_unclassified}) "
+  f"{'✓' if input_lhs == input_rhs else '✗'}<br>"
+  f"Unresolved ({unresolved_lhs}) = Unclassified ({n_unclassified}) + Classified but unresolved ({n_classified_unresolved}) "
+  f"{'✓' if unresolved_lhs == unresolved_rhs else '✗'}"
+  "</div>"
 )
 
 # ── Per-resolver resolution funnel ────────────────────────────
@@ -263,7 +278,7 @@ for resolver, df_r, df_u in [
         f"<td>{n_res + n_unr}</td></tr>"
     )
 
-fail_counts = df_failed["fail_reason"].value_counts().to_dict() if not df_failed.empty else {}
+fail_summary_html, fail_counts = failure_summary_rows(df_failed)
 n_asm_missing   = fail_counts.get("assembly_not_cached", 0)
 n_coord_missing = fail_counts.get("missing_coordinates", 0)
 n_chrom_missing = fail_counts.get("chrom_not_found", 0)
@@ -299,6 +314,13 @@ HTML = f"""<!DOCTYPE html>
     table.data-table tr:hover td {{ background: #f8fafc; }}
     .info-box {{ background: #eff6ff; border-left: 4px solid #3b82f6;
                  padding: 12px 16px; border-radius: 4px; font-size: 0.875rem; margin: 12px 0; }}
+    .report-intro, .action-box {{ background: white; border-radius: 10px; padding: 16px 18px;
+                 box-shadow: 0 1px 3px rgba(0,0,0,.08); margin: 16px 0; }}
+    .report-intro strong, .action-box strong {{ display: block; color: #1e40af; margin-bottom: 6px; }}
+    .report-intro p, .action-box li {{ font-size: 0.92rem; color: #334155; line-height: 1.45; }}
+    .action-box ul {{ margin: 8px 0 0 18px; padding: 0; }}
+    .section-note {{ margin-top: 8px; color: #64748b; }}
+    .file-link {{ color: #1e40af; text-decoration: underline; }}
     .biomart-box {{ background: #f0fdf4; border-left: 4px solid #22c55e;
                     padding: 12px 16px; border-radius: 4px; font-size: 0.875rem; margin: 12px 0; }}
     footer {{ text-align: center; color: #94a3b8; font-size: 0.8rem;
@@ -314,14 +336,33 @@ HTML = f"""<!DOCTYPE html>
 </header>
 <main>
 
+  {report_intro_html(
+      report_title="Full report",
+      summary="Use this report for the end-to-end view: classification, resolution, extraction failures, and benchmark timings.",
+      related_href="resolution_report.html",
+      related_label="resolution report",
+  )}
+
+  {next_actions_html(
+      unresolved_count=n_unresolved_total,
+      unclassified_count=n_unclassified,
+      classified_unresolved_count=n_classified_unresolved,
+      ambiguous_count=len(df_amb),
+      unknown_prefix_count=len(df_unkpfx),
+      extraction_failures=n_total_failed,
+      chrom_failures=n_chrom_missing,
+      assembly_failures=n_asm_missing,
+  )}
+
   <h2>Overview</h2>
   <div class="stat-grid">
     {stat_card("Total Input IDs",        total_input,       "#1e40af")}
     {stat_card("Classified",             len(df_cls),       "#0369a1")}
     {stat_card("Resolved",               len(df_res),       "#059669")}
+    {stat_card("Unclassified",           n_unclassified,    "#dc2626")}
+    {stat_card("Classified Unresolved",  n_classified_unresolved, "#b45309")}
     {stat_card("Has Assembly Accession", n_has_assembly,    "#0891b2")}
     {stat_card("Has Coordinates",        n_has_coords,      "#0891b2")}
-    {stat_card("Unresolved",             len(df_unr),       "#dc2626")}
     {stat_card("Ambiguous (alts)",       len(df_amb),       "#d97706")}
     {stat_card("Output Sequences",       fasta_count,       "#7c3aed")}
     {stat_card("Extraction Failures",    n_total_failed,    "#dc2626")}
@@ -329,9 +370,11 @@ HTML = f"""<!DOCTYPE html>
 
   <h2>Pipeline Funnel</h2>
   <table class="data-table">
-    <thead><tr><th>Stage</th><th>Transcripts</th><th>% of resolved (or input)</th></tr></thead>
+    <thead><tr><th>Stage</th><th>Transcripts</th><th>% of stage baseline</th></tr></thead>
     <tbody>{funnel_html}</tbody>
   </table>
+
+  {consistency_html}
 
   <div class="info-box">
     Output: <code>output.fasta</code> ({fasta_count} sequences) and
@@ -341,15 +384,7 @@ HTML = f"""<!DOCTYPE html>
   </div>
 
   <h2>Extraction Failures</h2>
-  <table class="data-table">
-    <thead><tr><th>Failure reason</th><th>Count</th></tr></thead>
-    <tbody>
-      <tr><td>Assembly not cached</td><td>{n_asm_missing}</td></tr>
-      <tr><td>Missing coordinates (NaN)</td><td>{n_coord_missing}</td></tr>
-      <tr><td>Chromosome not found in index</td><td>{n_chrom_missing}</td></tr>
-      <tr><td>Sequence extraction error</td><td>{n_seq_error}</td></tr>
-    </tbody>
-  </table>
+  {fail_summary_html}
 
   <h2>Extraction Failures by Resolver and Reason</h2>
   {fail_detail_html}
@@ -401,7 +436,7 @@ HTML = f"""<!DOCTYPE html>
    " The pipeline stopped and required manual intervention. "
    "These prefixes were not in the built-in species reference table — they were resolved "
    "by adding entries to <code>ensembl_species_overrides</code> in config.yaml.</div>"
-   + df_to_html_table(df_unkpfx)}
+   + df_to_html_table(df_unkpfx, full_href="ensembl_unknown_prefixes.tsv", max_rows=25)}
 
   <h2>Resolved Transcripts by Organism</h2>
   <table class="data-table">
@@ -410,8 +445,15 @@ HTML = f"""<!DOCTYPE html>
             "<tr><td colspan='2'>No organism data available</td></tr>"}</tbody>
   </table>
 
-  <h2>Unresolved IDs</h2>
-  {df_to_html_table(df_unr)}
+  <h2>Unresolved IDs (Split)</h2>
+  <h3 style="margin:14px 0 8px;color:#475569;">Unclassified (pattern unmatched)</h3>
+  {df_to_html_table(df_unmatched, full_href="pattern_unmatched.tsv", max_rows=25)}
+
+  <h3 style="margin:14px 0 8px;color:#475569;">Classified but unresolved</h3>
+  {df_to_html_table(df_not_found, full_href="matched_not_found.tsv", max_rows=25)}
+
+  <h3 style="margin:14px 0 8px;color:#475569;">Combined unresolved (legacy view)</h3>
+  {df_to_html_table(df_unr, full_href="unresolved.tsv", max_rows=25)}
 
   <h2>Assembly Accession Resolution</h2>
   <table class="data-table">
@@ -420,7 +462,7 @@ HTML = f"""<!DOCTYPE html>
   </table>
 
   <h2>Ambiguous IDs (alternatives not chosen)</h2>
-  {df_to_html_table(df_amb)}
+  {df_to_html_table(df_amb, full_href="ambiguous.tsv", max_rows=25)}
 
   <h2>Benchmark — Rule Timing</h2>
   {df_to_html_table(df_bench)}
