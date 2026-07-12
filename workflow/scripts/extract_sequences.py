@@ -28,6 +28,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 sys.path.insert(0, str(Path(__file__).parent))
+from chrom_translation import load_chrom_translation
 from logging_utils import get_logger
 
 # ── Snakemake interface ───────────────────────────────────────
@@ -82,6 +83,8 @@ fasta_records: list[SeqRecord] = []
 bed_rows: list[dict] = []
 failed_rows: list[dict] = []
 
+translation_cache: dict[str, dict[str, str]] = {}  # assembly -> {alias: refseq}
+
 skipped_no_asm = 0
 skipped_no_coord = 0
 skipped_no_chrom = 0
@@ -110,6 +113,10 @@ for idx, row in df.iterrows():
     start = int(row["start"])
     end = int(row["end"])
 
+    # Swap if inverted (resolver bug)
+    if start > end:
+        start, end = end, start
+
     # Locate cached assembly
     fasta_path = CACHE_DIR / assembly / "genome.fasta"
     fai_path = Path(str(fasta_path) + ".fai")
@@ -123,8 +130,16 @@ for idx, row in df.iterrows():
     # Get chromosome lengths for clamping
     chrom_lengths = get_chrom_lengths(fai_path)
 
-    # Normalize chromosome name (handle 'chr' prefix mismatches)
-    chrom_key = chrom
+    # Translate friendly chrom name → RefSeq accession for NCBI FASTAs
+    # (memoized per assembly; {} for non-NCBI, falls through to chr-toggle)
+    if assembly not in translation_cache:
+        translation_cache[assembly] = load_chrom_translation(
+            CACHE_DIR / assembly / "assembly_report.txt"
+        )
+    xlate = translation_cache[assembly]
+
+    # Normalize chromosome name (report translation, then 'chr' prefix toggle)
+    chrom_key = xlate.get(chrom, chrom)
     if chrom_key not in chrom_lengths:
         alt = f"chr{chrom}" if not chrom.startswith("chr") else chrom.lstrip("chr")
         if alt in chrom_lengths:
