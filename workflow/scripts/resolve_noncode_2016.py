@@ -35,7 +35,6 @@ from logging_utils import get_logger  # type: ignore[import-untyped]
 log = get_logger("resolve_noncode_2016", snakemake.log[0])  # type: ignore[name-defined]
 
 unresolved_path: str = snakemake.input.noncode_v4_unresolved   # type: ignore[name-defined]
-transcript2gene_path: str = snakemake.input.transcript2gene     # type: ignore[name-defined]
 nc2016_fa: str = snakemake.params.nc2016_fa                     # type: ignore[name-defined]
 out_resolved: str = snakemake.output.resolved                   # type: ignore[name-defined]
 out_unresolved: str = snakemake.output.unresolved               # type: ignore[name-defined]
@@ -132,16 +131,6 @@ with open(nc2016_fa) as fh:
 
 log.info(f"  NONCODE2016 IDs loaded: {len(nc2016_ids):,}")
 
-# ── Load Transcript2Gene ──────────────────────────────────────
-log.info(f"Loading NONCODEv5_Transcript2Gene from {transcript2gene_path}")
-t2g: dict[str, str] = {}
-with open(transcript2gene_path) as fh:
-    for line in fh:
-        parts = line.rstrip("\n").split()
-        if len(parts) >= 2:
-            t2g[parts[0]] = parts[1]
-log.info(f"  Transcript2Gene entries: {len(t2g):,}")
-
 # ── Resolve ───────────────────────────────────────────────────
 resolved_rows: list[dict] = []
 still_unresolved_rows: list[dict] = []
@@ -168,14 +157,7 @@ for _, row in df_unres.iterrows():
         )
         continue
 
-    organism, assembly = meta
     base_id = tid.rsplit(".", 1)[0] if "." in tid else tid
-
-    # Gene-ID: T2G full versioned then base; for gene IDs the ID itself.
-    if prefix[-1] == "T":
-        gene_id = t2g.get(tid) or t2g.get(base_id) or ""
-    else:
-        gene_id = tid
 
     # Probe NONCODE2016 FASTA: full ID first, then base ID.
     in_2016 = tid in nc2016_ids or base_id in nc2016_base_ids
@@ -186,19 +168,13 @@ for _, row in df_unres.iterrows():
         )
         continue
 
-    resolved_rows.append(
+    # NONCODE2016 fallback confirms transcript existence only; coordinates are unavailable.
+    still_unresolved_rows.append(
         {
-            "transcript_id":      tid,
-            "db_source":          "noncode_2016",
-            "gene_id":            gene_id if gene_id else base_id,
-            "gene_symbol":        gene_id if gene_id else base_id,
-            "organism":           organism,
-            "assembly_accession": assembly,
-            "chrom":              "",
-            "start":              pd.NA,
-            "end":                pd.NA,
-            "strand":             "",
-            "is_ambiguous":       False,
+            "transcript_id": tid,
+            "raw_header": raw_header,
+            "source_file": source_file,
+            "reason": "matched_noncode2016_no_coordinates",
         }
     )
 

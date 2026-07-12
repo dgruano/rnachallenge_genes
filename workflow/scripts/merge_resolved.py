@@ -250,6 +250,22 @@ df_all_resolved = pd.concat(
     ignore_index=True,
 )
 
+coordless_not_found = pd.DataFrame(columns=["transcript_id", "db_source", "reason"])
+if not df_all_resolved.empty:
+    chrom_missing = df_all_resolved["chrom"].isna() | df_all_resolved["chrom"].astype("string").str.strip().eq("")
+    start_end_missing = df_all_resolved["start"].isna() & df_all_resolved["end"].isna()
+    missing_coords = chrom_missing | start_end_missing
+
+    if missing_coords.any():
+        coordless_not_found = df_all_resolved.loc[
+            missing_coords, ["transcript_id", "db_source"]
+        ].copy()
+        coordless_not_found["reason"] = "missing_coordinates"
+        df_all_resolved = df_all_resolved.loc[~missing_coords].copy()
+        log.info(
+            f"Filtered {len(coordless_not_found)} coordinate-less row(s) from resolved output"
+        )
+
 # ── Fill URL columns from Stage 2 config-DB URL tables ────────
 log.info("Filling URL columns from Stage 2 URL tables…")
 df_all_resolved = fill_urls_from_table(df_all_resolved, df_plant_urls, "plant")
@@ -275,6 +291,9 @@ for frame in (df_ncbi_assembly_unres, df_ens_unres, df_gram_unres, df_phytozome_
         tmp = frame[["transcript_id", "reason"]].copy()
         tmp["db_source"] = "plant"
         normalized_not_found.append(tmp[["transcript_id", "db_source", "reason"]])
+
+if not coordless_not_found.empty:
+    normalized_not_found.append(coordless_not_found)
 
 df_matched_not_found = (
     pd.concat(normalized_not_found, ignore_index=True)
