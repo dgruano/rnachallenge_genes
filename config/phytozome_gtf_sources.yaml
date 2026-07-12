@@ -10,6 +10,24 @@ phytozome_gtf_sources:
     genome_id: 154                     # genome_id= param for the API
     gtf: "resources/phytozome/Csinensis_154_v1.1.gene_exons.gff3.gz"
 
+  amborella_trichopoda:
+    species_query: "Amborella trichopoda"
+    phytozome_version: "v1.0"
+    genome_id: 291
+    gtf: "resources/phytozome/amborella_trichopoda.gff3.gz"
+    notes: >
+      Phytozome genome_id 291 resolves to Amborella trichopoda v1.0.
+      Portal annotation file: Atrichopoda_291_v1.0.gene_exons.gff3.gz.
+
+  chlamydomonas_reinhardtii:
+    species_query: "Chlamydomonas reinhardtii"
+    phytozome_version: "v5.6"
+    genome_id: 281
+    gtf: "resources/phytozome/chlamydomonas_reinhardtii.gff3.gz"
+    notes: >
+      Phytozome genome_id 281 resolves to Chlamydomonas reinhardtii v5.6.
+      Portal annotation file: Creinhardtii_281_v5.6.gene_exons.gff3.gz.
+
   sorghum_bicolor:
     species_query: "Sorghum bicolor"
     phytozome_version: 11
@@ -55,3 +73,44 @@ phytozome_gtf_sources:
       This entry is for Zea mays B73 v5, which is specific of those
       ids that start with Zm00001d. Some others are easily found in Gencode Plants
       or Gramene Maize, but not these.
+
+  solanum_tuberosum:
+    species_query: "Solanum tuberosum"
+    phytozome_version: 10
+    genome_id: 206
+    gtf: "resources/phytozome/solanum_tuberosum.gff3.gz"
+    assembly_name: "PGSC_DM_v3.4"
+    notes: >
+      Used for potato PGSC* transcript IDs (e.g. from RNAplonc) backed by
+      Phytozome annotation v3.4. Portal: https://data.jgi.doe.gov/refine-download/phytozome?genome_id=206
+
+  physcomitrella_patens:
+    species_query: "Physcomitrium patens"
+    phytozome_version: "v3.3"
+    genome_id: 318
+    gtf: "resources/phytozome/physcomitrella_patens.gff3.gz"
+    notes: >
+      Phytozome genome_id 318 resolves to Physcomitrium patens v3.3.
+      Portal annotation file: Ppatens_318_v3.3.gene_exons.gff3.gz.
+
+  vitis_vinifera:
+    species_query: "Vitis vinifera"
+    phytozome_version: "Genoscope.12X"
+    genome_id: 145
+    assembly_name: "Genoscope.12X"
+    gtf: "resources/phytozome/vitis_vinifera.gff3.gz"
+    notes: >
+      Phytozome genome_id 145 resolves to Vitis vinifera Genoscope.12X.
+      Portal annotation file: Vvinifera_145_Genoscope.12X.gene_exons.gff3.gz.
+
+  # TODO: Enable when the local GFF3 is available.
+  # Vitis legacy IDs in this project use Genoscope.12X IDs:
+  #   transcript: GSVIVT*
+  #   gene:       GTVIVG*
+  # Portal page: https://data.jgi.doe.gov/refine-download/phytozome?genome_id=145
+  # vitis_vinifera:
+  #   species_query: "Vitis vinifera"
+  #   phytozome_version: 13
+  #   genome_id: 145
+  #   assembly_name: "Genoscope.12X"
+  #   gtf: "resources/phytozome/Vvinifera_145_Genoscope12X.gene_exons.gff3.gz"
