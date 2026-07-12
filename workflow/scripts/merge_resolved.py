@@ -52,6 +52,9 @@ in_ensembl_assembly_unres = snakemake.input.ensembl_assembly_unresolved
 in_gramene_unres = snakemake.input.gramene_unresolved
 in_noncode_v4_unres = snakemake.input.noncode_v4_unresolved
 in_noncode_2016_unres = snakemake.input.noncode_2016_unresolved
+in_plant_urls = snakemake.input.plant_assembly_urls
+in_metazoa_urls = snakemake.input.metazoa_assembly_urls
+in_yeast_urls = snakemake.input.yeast_assembly_urls
 out_resolved = snakemake.output.resolved
 out_ambiguous = snakemake.output.ambiguous
 out_unresolved = snakemake.output.unresolved
@@ -140,7 +143,42 @@ def normalize_resolved_frame(
             else:
                 normalized[col] = pd.NA
 
+    # Replace known assembly_accession placeholders with NA so URL fill can overwrite them
+    if "assembly_accession" in normalized.columns:
+        placeholder_mask = normalized["assembly_accession"].isin(["EnsemblPlants"])
+        if placeholder_mask.any():
+            normalized.loc[placeholder_mask, "assembly_accession"] = pd.NA
+
     return normalized
+
+
+_URL_FILL_COLS = ["assembly_accession", "fasta_url", "gtf_url", "gtf_format"]
+
+
+def fill_urls_from_table(df: pd.DataFrame, url_table: pd.DataFrame, label: str) -> pd.DataFrame:
+    """Fill NA URL/accession columns by LEFT JOIN on assembly_name."""
+    if url_table.empty or df.empty:
+        return df
+
+    fill_cols = [c for c in _URL_FILL_COLS if c in url_table.columns and c in df.columns]
+    if not fill_cols or "assembly_name" not in df.columns:
+        return df
+
+    url_slim = (
+        url_table[["assembly_name"] + fill_cols]
+        .drop_duplicates("assembly_name")
+        .rename(columns={c: f"_fill_{c}" for c in fill_cols})
+    )
+    merged = df.merge(url_slim, on="assembly_name", how="left")
+    for col in fill_cols:
+        fill_col = f"_fill_{col}"
+        if fill_col in merged.columns:
+            merged[col] = merged[col].combine_first(merged[fill_col])
+            merged = merged.drop(columns=[fill_col])
+
+    filled = (merged["fasta_url"].notna() & df["fasta_url"].isna()).sum() if "fasta_url" in df.columns else 0
+    log.info(f"  fill_urls ({label}): filled fasta_url for {filled} row(s)")
+    return merged
 
 
 df_ncbi_assembly = safe_read(in_ncbi_assembly_res, "ncbi_assembly_resolved")
@@ -175,6 +213,9 @@ df_gram_unres = safe_read(in_gramene_unres, "gramene_unresolved")
 df_noncode_v4_unres = safe_read(in_noncode_v4_unres, "noncode_v4_unresolved")
 df_noncode_2016_unres = safe_read(in_noncode_2016_unres, "noncode_2016_unresolved")
 df_noncode_unres = df_noncode_2016_unres  # final unresolved after all fallbacks
+df_plant_urls = safe_read(in_plant_urls, "plant_assembly_urls")
+df_metazoa_urls = safe_read(in_metazoa_urls, "metazoa_assembly_urls")
+df_yeast_urls = safe_read(in_yeast_urls, "yeast_assembly_urls")
 
 df_ncbi_assembly = normalize_resolved_frame(df_ncbi_assembly, "ncbi_assembly_resolved")
 df_ensembl = normalize_resolved_frame(df_ensembl, "ensembl_assembly_resolved")
@@ -208,6 +249,13 @@ df_all_resolved = pd.concat(
     [df_ncbi_assembly, df_ensembl, df_external, df_biomart, df_plant_gtf, df_phytozome_gtf, df_worm_gtf, df_fly_gtf, df_yeast_gtf, df_gramene, df_noncode, df_noncode_v4, df_noncode_2016, df_abandoned],
     ignore_index=True,
 )
+
+# ── Fill URL columns from Stage 2 config-DB URL tables ────────
+log.info("Filling URL columns from Stage 2 URL tables…")
+df_all_resolved = fill_urls_from_table(df_all_resolved, df_plant_urls, "plant")
+df_all_resolved = fill_urls_from_table(df_all_resolved, df_metazoa_urls, "metazoa")
+df_all_resolved = fill_urls_from_table(df_all_resolved, df_yeast_urls, "yeast")
+
 df_all_ambig = pd.concat([df_amb_na, df_amb_ens, df_amb_ext], ignore_index=True)
 df_pattern_unmatched = df_unknown.copy()
 
