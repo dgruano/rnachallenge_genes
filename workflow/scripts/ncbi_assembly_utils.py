@@ -29,6 +29,20 @@ import pandas as pd
 _GENEID_ATTR_RE = re.compile(r'GeneID[="](\d+)', re.IGNORECASE)
 _BATCH_SIZE = 50
 _RATE_LIMIT_DELAY = 0.02
+NCBI_FTP_ALL_BASE = "https://ftp.ncbi.nlm.nih.gov/genomes/all"
+
+
+def ncbi_ftp_species_dir(accession: str, ftp_base: str = NCBI_FTP_ALL_BASE) -> str:
+    """Parent FTP directory holding an accession's assembly folders.
+
+    Pure string math, no network: ``GCF_000001735.4`` ->
+    ``{ftp_base}/GCF/000/001/735/``. The concrete assembly folder (which also
+    embeds the assembly name) is found by listing this directory — reliable
+    even when the rate-limited datasets API 429s.
+    """
+    acc = accession.split(".")[0]
+    prefix, digits = acc[0:3], acc[4:]
+    return f"{ftp_base}/{prefix}/{digits[0:3]}/{digits[3:6]}/{digits[6:9]}/"
 
 
 def set_entrez_credentials(email: str, api_key: Optional[str] = None):

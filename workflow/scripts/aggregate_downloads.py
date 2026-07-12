@@ -12,7 +12,7 @@ downloads fail.
 Snakemake interface:
     snakemake.input.status_files   — list of {CACHE}/{accession}/.download_done
     snakemake.input.log_files      — list of {LOGS}/download_assembly/{accession}.log
-    snakemake.input.accession_list — results/assembly_accessions.txt
+    snakemake.input.accession_list — results/assembly_download_manifest.tsv
     snakemake.input.resolved       — results/ncbi_chromosome_resolved.tsv
     snakemake.output.done          — results/.assemblies_ready
     snakemake.output.downloaded    — results/downloaded_assemblies.tsv
@@ -21,7 +21,7 @@ Snakemake interface:
 
 Failure modes reported in unresolved_assemblies.tsv:
     reason column:
-        "not_resolvable_by_download_assemblies"  — non-GCF/GCA accession
+        "not_resolvable_by_download_assemblies"  — no manifest cache key
         "failed: ..."                             — download failed (from status file)
     fail_detail column:
         most specific error extracted from the log file
@@ -124,9 +124,15 @@ if failed_accessions:
     for acc, detail in sorted(failed_accessions.items()):
         log.warning(f"  FAILED {acc}: {detail}")
 
-# ── Load GCF/GCA accession list ───────────────────────────────
-with open(accession_list_path) as fh:
-    assembly_accessions = {line.strip() for line in fh if line.strip()}
+# ── Load download manifest (cache_key,fasta_url) ──────────────
+manifest_df = pd.read_csv(accession_list_path, sep="\t")
+assembly_accessions = set()
+if not manifest_df.empty and "cache_key" in manifest_df.columns:
+    assembly_accessions = {
+        x.strip()
+        for x in manifest_df["cache_key"].dropna().astype(str).tolist()
+        if x.strip()
+    }
 
 # ── Load resolved TSV ─────────────────────────────────────────
 df = pd.read_csv(resolved_path, sep="\t")
@@ -138,7 +144,7 @@ downloaded_df = (
 )
 
 # ── Build unresolved_df ───────────────────────────────────────
-# Category 1: non-GCF/GCA accessions (not in assembly_accessions.txt)
+# Category 1: rows without a download-manifest cache key
 not_resolvable = df[~df["assembly_accession"].isin(assembly_accessions)].copy()
 not_resolvable["reason"] = "not_resolvable_by_download_assemblies"
 not_resolvable["fail_detail"] = ""
@@ -149,7 +155,7 @@ failed_rows = []
 for acc, detail in failed_accessions.items():
     rows = df[df["assembly_accession"] == acc]
     if rows.empty:
-        # Accession was in assembly_accessions.txt but missing from resolved TSV
+        # Cache key was in manifest but missing from resolved TSV
         row = pd.Series({"assembly_accession": acc})
         row["reason"] = "failed: download failed"
         row["fail_detail"] = detail
