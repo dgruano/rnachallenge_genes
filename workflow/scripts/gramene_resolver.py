@@ -25,6 +25,48 @@ cfg = snakemake.config
 GRAMENE_API = "https://data.gramene.org/v69/search"
 REQUEST_DELAY = 0.1  # seconds between requests
 MAX_RETRIES = 3
+GRAMENE_FIELDS = "id,synonyms,taxon_id,system_name,biotype,chrom,seq_region_name,start,end,strand,region"
+
+
+def normalize_strand(value: object) -> str:
+    if value in (1, "+", "+1", "1"):
+        return "+"
+    if value in (-1, "-", "-1"):
+        return "-"
+    return ""
+
+
+def parse_coordinates(doc: Dict) -> Dict[str, object]:
+    """Extract coordinate fields from a Gramene Solr document."""
+    chrom = doc.get("chrom") or doc.get("seq_region_name") or ""
+    start = doc.get("start")
+    end = doc.get("end")
+    strand = normalize_strand(doc.get("strand"))
+
+    # Some records expose coordinates as region="chr:start-end".
+    region = doc.get("region")
+    if isinstance(region, str) and region:
+        region_text = region.split(":")
+        if len(region_text) >= 2:
+            if not chrom:
+                chrom = region_text[0]
+            if start is None or end is None:
+                span = region_text[1].split("-")
+                if len(span) == 2:
+                    try:
+                        start = int(span[0])
+                        end = int(span[1])
+                    except ValueError:
+                        pass
+            if not strand and len(region_text) >= 3:
+                strand = normalize_strand(region_text[2])
+
+    return {
+        "chrom": chrom,
+        "start": start,
+        "end": end,
+        "strand": strand,
+    }
 
 def build_query_candidates(transcript_id: str) -> list[str]:
     """
@@ -63,26 +105,28 @@ def build_query_candidates(transcript_id: str) -> list[str]:
     return uniq
 
 
-def infer_species_hint(row: pd.Series) -> str:
-    if 'inferred_species' in row and pd.notna(row['inferred_species']):
-        return str(row['inferred_species'])
+def infer_species_hint(row: Dict[str, object]) -> str:
+    species_value = row.get("inferred_species")
+    if pd.notna(species_value):
+        return str(species_value)
     reason = str(row.get('reason', ''))
     if reason.startswith('biomart_no_match_'):
         return reason.replace('biomart_no_match_', '')
     return ''
 
-def query_gramene(gene_id: str) -> Optional[Dict]:
+def query_gramene(session: requests.Session, gene_id: str) -> Optional[Dict]:
     """
     Query Gramene search API for a gene ID.
-    
+
     Returns:
-        Dict with keys: modern_id, synonyms, taxon_id, system_name
+        Dict with keys: modern_id, synonyms, taxon_id, system_name, region, start, end, strand
         None if not found or error
     """
     for attempt in range(MAX_RETRIES):
         try:
-            params = {"q": gene_id}
-            response = requests.get(GRAMENE_API, params=params, timeout=30)
+            # Restrict payload to required fields and first hit to reduce transfer/parse cost.
+            params = {"q": gene_id, "fl": GRAMENE_FIELDS, "rows": 1}
+            response = session.get(GRAMENE_API, params=params, timeout=30)
             
             if response.status_code == 200:
                 data = response.json()
@@ -94,6 +138,8 @@ def query_gramene(gene_id: str) -> Optional[Dict]:
                 # Take first result (highest score)
                 doc = data['response']['docs'][0]
                 
+                coords = parse_coordinates(doc)
+
                 return {
                     'modern_id': doc['id'],
                     'synonyms': doc.get('synonyms', []),
@@ -101,6 +147,8 @@ def query_gramene(gene_id: str) -> Optional[Dict]:
                     'system_name': doc.get('system_name'),
                     'biotype': doc.get('biotype'),
                     'num_found': num_found,
+                    'assembly_name': doc.get('system_name'),
+                    **coords,
                 }
             else:
                 log.warning(f"Gramene API returned HTTP {response.status_code} for {gene_id}")
@@ -124,11 +172,15 @@ def resolve_via_gramene(unresolved_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.D
     """
     resolved_records = []
     unresolved_records = []
+    query_cache: Dict[str, Optional[Dict]] = {}
+    api_calls = 0
     
     total = len(unresolved_df)
     log.info(f"Querying Gramene for {total} IDs...")
+
+    session = requests.Session()
     
-    for idx, row in unresolved_df.iterrows():
+    for idx, row in enumerate(unresolved_df.to_dict("records"), start=1):
         transcript_id = row['transcript_id']
         species_hint = infer_species_hint(row)
 
@@ -136,7 +188,13 @@ def resolve_via_gramene(unresolved_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.D
         result = None
         matched_candidate = ""
         for candidate in candidates:
-            result = query_gramene(candidate)
+            if candidate in query_cache:
+                result = query_cache[candidate]
+            else:
+                result = query_gramene(session, candidate)
+                query_cache[candidate] = result
+                api_calls += 1
+                time.sleep(REQUEST_DELAY)
             if result:
                 matched_candidate = candidate
                 break
@@ -145,20 +203,34 @@ def resolve_via_gramene(unresolved_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.D
             # Map modern gene ID back to transcript coordinate
             modern_gene_id = result['modern_id']
             
+            synonyms = result['synonyms']
+            if isinstance(synonyms, list):
+                synonyms_text = ';'.join(synonyms)
+            else:
+                synonyms_text = str(synonyms or '')
+
             resolved_records.append({
                 'transcript_id': transcript_id,
                 'gene_id': modern_gene_id,
                 'db_source': 'gramene',
+                'organism': result['system_name'],
+                'assembly_name': result.get('assembly_name') or result['system_name'],
+                'assembly_accession': pd.NA,
+                'chrom': result.get('chrom', ''),
+                'start': result.get('start', pd.NA),
+                'end': result.get('end', pd.NA),
+                'strand': result.get('strand', ''),
+                'is_ambiguous': False,
                 'species': result['system_name'],
                 'original_species_hint': species_hint,
                 'query_id': matched_candidate,
-                'gramene_synonyms': ';'.join(result['synonyms']),
+                'gramene_synonyms': synonyms_text,
                 'biotype': result['biotype'],
                 'num_matches': result['num_found'],
             })
             
-            if (idx + 1) % 50 == 0:
-                log.info(f"Progress: {idx+1}/{total} ({len(resolved_records)} resolved)")
+            if idx % 50 == 0:
+                log.info(f"Progress: {idx}/{total} ({len(resolved_records)} resolved)")
         else:
             unresolved_records.append({
                 'transcript_id': transcript_id,
@@ -166,11 +238,15 @@ def resolve_via_gramene(unresolved_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.D
                 'inferred_species': species_hint,
                 'reason': 'not_found_in_gramene',
             })
-        
-        # Rate limiting
-        time.sleep(REQUEST_DELAY)
-    
-    log.info(f"Gramene resolution complete: {len(resolved_records)}/{total} resolved ({100*len(resolved_records)/total:.1f}%)")
+
+    if total > 0:
+        resolved_pct = 100 * len(resolved_records) / total
+        log.info(
+            f"Gramene resolution complete: {len(resolved_records)}/{total} "
+            f"resolved ({resolved_pct:.1f}%), API calls={api_calls}, cache size={len(query_cache)}"
+        )
+    else:
+        log.info("Gramene resolution complete: no IDs to resolve")
     
     resolved_df = pd.DataFrame(resolved_records)
     still_unresolved_df = pd.DataFrame(unresolved_records)
