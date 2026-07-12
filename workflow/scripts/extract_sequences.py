@@ -28,7 +28,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 sys.path.insert(0, str(Path(__file__).parent))
-from chrom_translation import load_chrom_translation
+from chrom_translation import load_chrom_translation, resolve_chrom_key
 from logging_utils import get_logger
 
 # ── Snakemake interface ───────────────────────────────────────
@@ -138,20 +138,16 @@ for idx, row in df.iterrows():
         )
     xlate = translation_cache[assembly]
 
-    # Normalize chromosome name (report translation, then 'chr' prefix toggle)
-    chrom_key = xlate.get(chrom, chrom)
-    if chrom_key not in chrom_lengths:
-        alt = f"chr{chrom}" if not chrom.startswith("chr") else chrom.lstrip("chr")
-        if alt in chrom_lengths:
-            log.debug(f"  [{label}] chrom name remapped {chrom!r} → {alt!r}")
-            chrom_key = alt
-        else:
-            log.warning(
-                f"  [{label}] Chromosome {chrom!r} not found in .fai — skipping"
-            )
-            skipped_no_chrom += 1
-            failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "chrom_not_found"})
-            continue
+    # Resolve chrom name to a .fai seqid (report map + 'chr' prefix toggle).
+    chrom_key = resolve_chrom_key(chrom, xlate, chrom_lengths)
+
+    if chrom_key is None:
+        log.warning(f"  [{label}] Chromosome {chrom!r} not found in .fai — skipping")
+        skipped_no_chrom += 1
+        failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "chrom_not_found"})
+        continue
+    if chrom_key != chrom:
+        log.debug(f"  [{label}] chrom name remapped {chrom!r} → {chrom_key!r}")
 
     chrom_len = chrom_lengths[chrom_key]
 
