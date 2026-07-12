@@ -18,8 +18,10 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
+from cache_key_utils import build_cache_key_from_url
 from logging_utils import get_logger
 from ncbi_assembly_utils import apply_ucsc_to_gcf_mapping
+from url_fill_utils import fill_urls_from_table as _fill_urls_from_table
 
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("merge_resolved", snakemake.log[0])
@@ -155,28 +157,20 @@ def normalize_resolved_frame(
 _URL_FILL_COLS = ["assembly_accession", "fasta_url", "gtf_url", "gtf_format"]
 
 
-def fill_urls_from_table(df: pd.DataFrame, url_table: pd.DataFrame, label: str) -> pd.DataFrame:
-    """Fill NA URL/accession columns by LEFT JOIN on assembly_name."""
-    if url_table.empty or df.empty:
-        return df
-
-    fill_cols = [c for c in _URL_FILL_COLS if c in url_table.columns and c in df.columns]
-    if not fill_cols or "assembly_name" not in df.columns:
-        return df
-
-    url_slim = (
-        url_table[["assembly_name"] + fill_cols]
-        .drop_duplicates("assembly_name")
-        .rename(columns={c: f"_fill_{c}" for c in fill_cols})
+def fill_urls_from_table(
+    df: pd.DataFrame,
+    url_table: pd.DataFrame,
+    label: str,
+    *,
+    fallback_on_organism: bool = False,
+) -> pd.DataFrame:
+    """Fill NA URL/accession columns from stage-2 URL tables."""
+    merged, filled = _fill_urls_from_table(
+        df,
+        url_table,
+        fill_cols=_URL_FILL_COLS,
+        fallback_on_organism=fallback_on_organism,
     )
-    merged = df.merge(url_slim, on="assembly_name", how="left")
-    for col in fill_cols:
-        fill_col = f"_fill_{col}"
-        if fill_col in merged.columns:
-            merged[col] = merged[col].combine_first(merged[fill_col])
-            merged = merged.drop(columns=[fill_col])
-
-    filled = (merged["fasta_url"].notna() & df["fasta_url"].isna()).sum() if "fasta_url" in df.columns else 0
     log.info(f"  fill_urls ({label}): filled fasta_url for {filled} row(s)")
     return merged
 
@@ -268,9 +262,31 @@ if not df_all_resolved.empty:
 
 # ── Fill URL columns from Stage 2 config-DB URL tables ────────
 log.info("Filling URL columns from Stage 2 URL tables…")
-df_all_resolved = fill_urls_from_table(df_all_resolved, df_plant_urls, "plant")
+df_all_resolved = fill_urls_from_table(
+    df_all_resolved,
+    df_plant_urls,
+    "plant",
+    fallback_on_organism=True,
+)
 df_all_resolved = fill_urls_from_table(df_all_resolved, df_metazoa_urls, "metazoa")
 df_all_resolved = fill_urls_from_table(df_all_resolved, df_yeast_urls, "yeast")
+
+# For URL-backed rows without a canonical accession, derive a stable cache key.
+if not df_all_resolved.empty:
+    acc_clean = df_all_resolved["assembly_accession"].astype("string").str.strip()
+    acc_missing = acc_clean.isna() | acc_clean.str.lower().isin(["", "nan", "none"])
+    url_clean = df_all_resolved["fasta_url"].astype("string").str.strip()
+    has_url = url_clean.notna() & ~url_clean.str.lower().isin(["", "nan", "none"])
+    needs_cache_key = acc_missing & has_url
+    if needs_cache_key.any():
+        df_all_resolved.loc[needs_cache_key, "assembly_accession"] = (
+            df_all_resolved.loc[needs_cache_key, "fasta_url"]
+            .astype("string")
+            .apply(build_cache_key_from_url)
+        )
+        log.info(
+            f"Derived URL-based cache key for {int(needs_cache_key.sum())} row(s)"
+        )
 
 df_all_ambig = pd.concat([df_amb_na, df_amb_ens, df_amb_ext], ignore_index=True)
 df_pattern_unmatched = df_unknown.copy()
