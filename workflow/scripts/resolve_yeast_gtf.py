@@ -98,7 +98,7 @@ gene_index = build_annotation_index(
     transcript_fields=(),
     gene_id_fields=("ID",),
     gene_symbol_fields=("Name",),
-    alias_fields=("Alias",),
+    alias_fields=("Alias", "dbxref"),  # dbxref carries SGD:Sxxxxxxxx (ROI #6)
     log=log,
 )
 
