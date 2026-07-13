@@ -55,15 +55,16 @@ def main(snakemake):
     entry = manifest.get(species)
     if entry is None and isinstance(manifest.get("species"), dict):
         entry = manifest["species"].get(species)
+    # The manifest only pins portal_file_name; genome_id in config is the source
+    # of truth. A missing entry is fine — fall through to the config lookup below.
     if entry is None:
-        raise WorkflowError(f"Phytozome manifest entry not found for species={species!r}")
+        entry = {}
 
-    status = str(entry.get("status", "RESTORED")).upper()
-    if status in {"PURGED", "COLD", "COLD_STORAGE", "ARCHIVED"}:
-        raise WorkflowError(
-            f"Phytozome file for {species} is not downloadable yet "
-            f"(status={status}). Restore it via the JGI workflow and rerun."
-        )
+    # The manifest's "status" is a stale snapshot. Don't gate on it here: the
+    # live JGI resolution below checks the real current status and fires a
+    # restore for PURGED files, so trusting the frozen field would block reruns
+    # forever. We only fall back to it when there's no way to check live.
+    stale_status = str(entry.get("status", "RESTORED")).upper()
 
     # Local/staged source short-circuit.
     source_path = entry.get("local_path") or entry.get("path") or entry.get("gtf")
@@ -113,6 +114,15 @@ def main(snakemake):
                 f"up to 24h. Rerun once it completes."
             )
         download_url = info["download_url"]
+
+    # No genome_id to check live status with: honor the stale PURGED snapshot
+    # so we emit a clear "restore it" message instead of a raw download error.
+    if genome_id is None and stale_status in {"PURGED", "COLD", "COLD_STORAGE", "ARCHIVED"}:
+        raise WorkflowError(
+            f"Phytozome file for {species} is not downloadable (manifest "
+            f"status={stale_status}) and has no genome_id to resolve a live "
+            f"restore. Add a genome_id in config or restore it via JGI and rerun."
+        )
 
     # Legacy fallback: explicit URL in the manifest (no genome_id available).
     if not download_url:

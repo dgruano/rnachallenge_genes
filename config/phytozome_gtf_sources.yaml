@@ -8,7 +8,7 @@ phytozome_gtf_sources:
     species_query: "Citrus sinensis"   # q= param for the API
     phytozome_version: 10              # ff[phytozome_version]= param for the API 
     genome_id: 154                     # genome_id= param for the API
-    gtf: "resources/phytozome/Csinensis_154_v1.1.gene_exons.gff3.gz"
+    gtf: "resources/phytozome/Csinensis_154_v1.1.gene.gff3.gz"
 
   amborella_trichopoda:
     species_query: "Amborella trichopoda"
@@ -28,11 +28,20 @@ phytozome_gtf_sources:
       Phytozome genome_id 281 resolves to Chlamydomonas reinhardtii v5.6.
       Portal annotation file: Creinhardtii_281_v5.6.gene_exons.gff3.gz.
 
+  glycine_max:
+    species_query: "Glycine max"
+    phytozome_version: 13
+    genome_id: 275
+    gtf: "resources/phytozome/glycine_max.gff3.gz"
+    notes: >
+      Added for Glyma* transcript IDs via JGI Phytozome.
+      Portal page: https://data.jgi.doe.gov/refine-download/phytozome?genome_id=275
+
   sorghum_bicolor:
     species_query: "Sorghum bicolor"
     phytozome_version: 11
     genome_id: 313
-    gtf: "resources/phytozome/Sbicolor_313_v3.1.gene_exons.gff3.gz"
+    gtf: "resources/phytozome/Sbicolor_313_v3.1.gene.gff3.gz"
     notes: >
       Used in RNAPlonc.
       RNAPlonc uses GreeNC which uses Phytozone V10.
@@ -45,7 +54,7 @@ phytozome_gtf_sources:
     species_query: "Ricinus communis"
     phytozome_version: 10
     genome_id: 119
-    gtf: "resources/phytozome/Rcommunis_119_v0.1.gene_exons.gff3.gz"
+    gtf: "resources/phytozome/Rcommunis_119_v0.1.gene.gff3.gz"
     notes: >
       Used in RNAPlonc.
       RNAPlonc uses GreeNC which uses Phytozone V10.
@@ -59,7 +68,7 @@ phytozome_gtf_sources:
     species_query: Oryza sative Japonicus group
     phytozome_version: 10
     genome_id: 204
-    gtf: "resources/phytozome/Osativa_204_v7.0.gene_exons.gff3.gz"
+    gtf: "resources/phytozome/Osativa_204_v7.0.gene.gff3.gz"
     notes: >
       28 rize transcripts have the LOC_ prefix. These are not found in any of the current
       tools, so may come from CNIT. As a default, for now, I am using phytozome 10.
@@ -74,6 +83,8 @@ phytozome_gtf_sources:
       ids that start with Zm00001d. Some others are easily found in Gencode Plants
       or Gramene Maize, but not these.
 
+  # TEMPORARILY DISABLED 2026-07-12 — no local GFF3 yet; needs a JGI download.
+  # Re-enable once resources/phytozome/solanum_tuberosum.gff3.gz is on disk.
   solanum_tuberosum:
     species_query: "Solanum tuberosum"
     phytozome_version: 10
@@ -84,6 +95,9 @@ phytozome_gtf_sources:
       Used for potato PGSC* transcript IDs (e.g. from RNAplonc) backed by
       Phytozome annotation v3.4. Portal: https://data.jgi.doe.gov/refine-download/phytozome?genome_id=206
 
+  # TEMPORARILY DISABLED 2026-07-12 — file PURGED on JGI tape, restore requested
+  # (req 652368). Re-enable once JGI reports RESTORED, then rerun
+  # resolve_phytozome_gtf + merge/extract/report. See PIPELINE_AUDIT.md Priority 0.
   physcomitrella_patens:
     species_query: "Physcomitrium patens"
     phytozome_version: "v3.3"
