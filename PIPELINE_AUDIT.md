@@ -75,6 +75,12 @@ then exited on three independent failures. Root-caused below. Two are real bugs
 - **Cause:** documented Ensembl Plants BioMart flakiness (see Performance & Troubleshooting in CLAUDE.md).
 - **Fix:** rerun — likely transient. If it persists, the tomato GTF downloaded fine (`solanum_lycopersicum.gtf.gz`), so the plant_gtf path already covers it; verify the mart dataset name against the current Plants release only if it keeps failing.
 
+### TB-3. Ensembl headers mislabelled `ncbi` via embedded-RefSeq substring ✅ FIXED — ⏸ DEFERRED MERGE (branch `fix/parse-ids-embedded-ncbi-substring`)
+- **Symptom:** the first 11 rows of `results/ncbi_genbank_unresolved.tsv` are `invalid_accession` IDs like `NC_010`, `NT_003`, `NP_201`, `xm_003`, `np_205` — surfaced by the TB-1 quarantine filter. They are **not** NCBI IDs at all.
+- **Root cause:** these are **Ensembl** transcripts whose IDs were extracted faultily. `extract_transcript_id` returns the whole underscore-joined header (`ENST00000570013.5_ENSG..._GANC_010_...`), which the anchored Ensembl `DB_PATTERN` can't match, so it falls to `find_embedded_accession`. There, the NCBI RefSeq `EMBEDDED_PATTERN` is listed **first** and searched unanchored with `\d+`, so it matches `NC_010` inside `GA``NC_010` (a gene-symbol token) before the Ensembl embedded pattern (parse_ids.py:520) ever runs. Mapping: `GANC_010`→`NC_010`, `PRNT_003`→`NT_003`, `PCNP_201`→`NP_201`, `Lexm_003`→`xm_003`, `Pianp_205`→`np_205`, `GMNC_002`→`NC_002`.
+- **Fix:** tightened the NCBI embedded regex in [parse_ids.py](workflow/scripts/parse_ids.py) with a left word-boundary `(?<![A-Za-z0-9])` and `\d{6,}` (real RefSeq accessions never start mid-word and always carry ≥6 digits). The Ensembl embedded pattern now wins → these 11 route to the `ensembl` resolver. Verified: junk substrings return `None`, real embedded RefSeq (`gi|…|ref|NM_000014.6|`, `lcl|NC_000001.11`) still match.
+- **⏸ Why deferred:** `parse_ids.py` is **Stage 1** — changing it invalidates the whole DAG and forces a full pipeline rerun. Per decision (2026-07-13) the fix is committed to isolated branch **`fix/parse-ids-embedded-ncbi-substring`** (commit `208b215`), to be **merged when a full rerun is acceptable**. Not on `fix/phytozome-jgi-download-id`.
+
 ---
 
 ## Evidence (post-fix run, 2026-07-12 ~12:00 and reruns after bottleneck fixes)
@@ -374,6 +380,7 @@ Each concern was investigated in isolation; full findings in `audit/`:
 16. ~~**[blocker] Filter junk IDs before NCBI epost**~~ ✅ **DONE (2026-07-13)** — `resolve_ncbi_genbank.py` now quarantines non-accession IDs (`xm_003`, `np_205`, `np_206`, `nc_201`) via `ACCESSION_RE` before `fetcher.fetch()`/`Entrez.epost`, routing them to unresolved as `invalid_accession`. Unblocks the ~1,615 valid IDs that the crash was discarding. See **TB-1**.
 17. **[blocker] Fix phytozome config-key/`gtf:`-basename mismatch** — rename the 4 `gtf:` paths to match their config keys (or reverse-match by basename in `download_phytozome_gtf.py`) so `citrus/sorghum/ricinus/oryza` resolve a `genome_id`. Also write the log on `WorkflowError` paths so failures aren't silent. See **TB-2**. Reopens Priority 0 §"Config path mismatch".
 18. **[transient] Rerun tomato metadata** — `download_metadata_table` for solanum_lycopersicum failed on transient BioMart; rerun, or rely on the already-downloaded plant GTF. See **L5**.
+19. **[deferred-merge] Merge Ensembl-mislabel parse fix** — ✅ fixed on branch **`fix/parse-ids-embedded-ncbi-substring`** (commit `208b215`); **not merged** because it's a Stage-1 change that forces a full rerun. Merge when a full rerun is scheduled. See **TB-3**.
 
 ### Cleanup (unchanged)
 
@@ -429,6 +436,7 @@ awk -F'\t' 'FNR>1{print $NF}' results/sequences/*.failed.tsv | sort | uniq -c
 - **#16 — NCBI epost crash (TB-1):** ✅ **DONE (2026-07-13)** — junk IDs filtered before epost in `resolve_ncbi_genbank.py`.
 - **#17 — phytozome key mismatch (TB-2):** 🔴 OPEN — align config keys with `gtf:` basenames (or reverse-match in `download_phytozome_gtf.py`) and log on the `WorkflowError` paths.
 - **#18 — tomato BioMart (L5):** 🟡 transient; rerun.
+- **#19 — Ensembl mislabel (TB-3):** ✅ fixed on branch `fix/parse-ids-embedded-ncbi-substring` (`208b215`), ⏸ **deferred merge** — Stage-1 change forces a full rerun; merge when one is scheduled.
 
 ### Priority 0: Land the phytozome/JGI unblock (NEW 2026-07-12)
 - JGI auth is now implemented + 5 new species wired. **Re-run parse → phytozome resolution → merge** to grow the resolved set with the new species (vitis/potato/amborella/chlamydomonas/physcomitrella). See [Phytozome/JGI unblock](#phytozomejgi-unblock-2026-07-12).
