@@ -159,6 +159,7 @@ PREFIX_TO_SPECIES = {
     "orange": "citrus_sinensis",
     "Sb": "sorghum_bicolor",
     "Sobic": "sorghum_bicolor",
+    "PGSC": "solanum_tuberosum",
     "Glyma": "glycine_max",
     "Bradi": "brachypodium_distachyon",
     "Cre": "chlamydomonas_reinhardtii",
@@ -167,6 +168,9 @@ PREFIX_TO_SPECIES = {
     "Si": "setaria_italica",
     "Thecc1EG": "theobroma_cacao",
     "Potri": "populus_trichocarpa",
+    "VIT_": "vitis_vinifera",
+    "GSVIVT": "vitis_vinifera",
+    "GTVIVG": "vitis_vinifera",
 }
 
 

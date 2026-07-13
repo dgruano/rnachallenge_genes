@@ -326,6 +326,13 @@ DB_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
     (
         "plant",
         "vitis_vinifera",
+        "phytozome",
+        "Genoscope.12X",
+        re.compile(r"^GTVIVG[0-9]+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        "vitis_vinifera",
         "ensembl_plants",
         "",
         re.compile(r"^VIT_\d+s\d+$", re.IGNORECASE),
@@ -334,7 +341,7 @@ DB_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
         "plant",
         "solanum_tuberosum",
         "pgsc",
-        "PGSC_DM_v4.03",
+        "PGSC_DM_v3.4",
         re.compile(r"^PGSC\d+DM\w+", re.IGNORECASE),
     ),
     (
@@ -476,6 +483,13 @@ EMBEDDED_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
     ),
     (
         "plant",
+        "vitis_vinifera",
+        "phytozome",
+        "Genoscope.12X",
+        re.compile(r"(GTVIVG[0-9]+)", re.IGNORECASE),
+    ),
+    (
+        "plant",
         "solanum_tuberosum",
         "phytozome",
         "",
@@ -485,7 +499,7 @@ EMBEDDED_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
         "plant",
         "solanum_tuberosum",
         "pgsc",
-        "PGSC_DM_v4.03",
+        "PGSC_DM_v3.4",
         re.compile(r"(PGSC\d+DM\w+)", re.IGNORECASE),
     ),
     (

@@ -75,6 +75,9 @@ PREFIX_TO_SPECIES = {
     "Solyc":  "solanum_lycopersicum",
     "Glyma":  "glycine_max",
     "PGSC":   "solanum_tuberosum",
+    "VIT_":   "vitis_vinifera",
+    "GSVIVT": "vitis_vinifera",
+    "GTVIVG": "vitis_vinifera",
     "orange": "citrus_sinensis",
 }
 
