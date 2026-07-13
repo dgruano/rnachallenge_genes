@@ -39,15 +39,23 @@ _PHYTOZOME_GTF_SOURCES = _phytozome_sources()
 # ── Download ─────────────────────────────────────────────────
 
 rule download_phytozome_gtf:
-    """Download or stage a single Phytozome GFF3 from a manifest entry."""
+    """Download or stage a single Phytozome GFF3 from a manifest entry.
+
+    Layout: resources/phytozome/<species>/<source_file_name>.gff3.gz. The
+    {species} wildcard is the folder — it equals the config key, so the script
+    can look the genome_id up by it. The inner file keeps the JGI source name
+    for traceability. The constraint stops {species} swallowing the '/'.
+    """
+    wildcard_constraints:
+        species = r"[^/]+",
     input:
         manifest = "resources/phytozome/manifest.json",
     output:
-        protected("resources/phytozome/{species}.gff3.gz"),
+        protected("resources/phytozome/{species}/{gff}"),
     log:
-        f"{LOGS}/download_phytozome_gtf/{{species}}.log",
+        f"{LOGS}/download_phytozome_gtf/{{species}}/{{gff}}.log",
     benchmark:
-        f"{BENCHMARKS}/download_phytozome_gtf/{{species}}.tsv",
+        f"{BENCHMARKS}/download_phytozome_gtf/{{species}}/{{gff}}.tsv",
     resources:
         slurm_partition = "compute",
         runtime         = 60,

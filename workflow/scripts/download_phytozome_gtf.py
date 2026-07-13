@@ -43,13 +43,24 @@ def load_token():
 
 
 def main(snakemake):
+    log_path = Path(snakemake.log[0])
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _run(snakemake, log_path)
+    except Exception as exc:
+        # Never fail silently: the empty-log failures (config-key/basename
+        # mismatch) were a diagnosis trap. Record the error before re-raising.
+        if not log_path.exists() or not log_path.read_text().strip():
+            log_path.write_text(f"ERROR resolving Phytozome GFF3: {exc}\n")
+        raise
+
+
+def _run(snakemake, log_path):
     species = snakemake.wildcards.species
     manifest_path = Path(snakemake.input.manifest)
     output_path = Path(snakemake.output[0])
-    log_path = Path(snakemake.log[0])
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
 
     manifest = json.loads(manifest_path.read_text())
     entry = manifest.get(species)
@@ -88,16 +99,21 @@ def main(snakemake):
             f"Add JGI_SESSION_TOKEN (or PHYTOZOME_BEARER) to .env or the environment."
         )
 
+    sources = snakemake.config.get("phytozome_gtf_sources", snakemake.config)
+    config_source = sources.get(species) or {}
+
     genome_id = entry.get("genome_id")
     if genome_id is None:
-        sources = snakemake.config.get("phytozome_gtf_sources", snakemake.config)
-        genome_id = (sources.get(species) or {}).get("genome_id")
+        genome_id = config_source.get("genome_id")
+
+    # Pin the exact JGI file. Config is the tracked source of truth (the manifest
+    # is gitignored); fall back to a manifest pin when config doesn't set one.
+    # Needed because JGI's selection heuristic prefers gene_exons over .gene.
+    prefer_name = config_source.get("portal_file_name") or entry.get("portal_file_name")
 
     download_url = None
     if genome_id is not None:
-        info = resolve_annotation(
-            genome_id, f"Bearer {token}", prefer_name=entry.get("portal_file_name")
-        )
+        info = resolve_annotation(genome_id, f"Bearer {token}", prefer_name=prefer_name)
         if info is None:
             raise WorkflowError(
                 f"JGI returned no gene annotation for {species} (genome_id={genome_id})"
