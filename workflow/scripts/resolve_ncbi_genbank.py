@@ -10,6 +10,7 @@ Output schema matches ncbi_ucsc_resolved.tsv so it can feed
 directly into merge_resolved.
 """
 
+import re
 import sys
 import time
 from pathlib import Path
@@ -50,6 +51,11 @@ RESOLVED_COLS = [
     "is_ambiguous",
 ]
 UNRESOLVED_COLS = ["transcript_id", "db_source", "reason"]
+
+# Real NCBI accession shape: 1-2 letters, optional underscore, 5+ digits,
+# optional version. Junk like `xm_003`/`nc_201` (3 digits) fails this and, if
+# eposted, makes NCBI reject the whole batch — poisoning the valid IDs with it.
+ACCESSION_RE = re.compile(r"^[A-Z]{1,2}_?\d{5,}(\.\d+)?$")
 
 
 # ── Gene-info lookup ──────────────────────────────────────────────────────────
@@ -105,7 +111,22 @@ if df_ncbi.empty:
     log.info("resolve_ncbi_genbank complete (nothing to do).")
     sys.exit(0)
 
-accessions: list[str] = df_ncbi["transcript_id"].tolist()
+all_ncbi_ids: list[str] = df_ncbi["transcript_id"].tolist()
+accessions: list[str] = []
+junk_rows: list[dict] = []
+for tid in all_ncbi_ids:
+    if ACCESSION_RE.match(str(tid).strip().upper()):
+        accessions.append(tid)
+    else:
+        junk_rows.append(
+            {"transcript_id": tid, "db_source": "ncbi", "reason": "invalid_accession"}
+        )
+if junk_rows:
+    log.warning(
+        f"Quarantined {len(junk_rows)} non-accession IDs before epost: "
+        f"{', '.join(str(r['transcript_id']) for r in junk_rows)}"
+    )
+
 log.info(f"Fetching GenBank records for {len(accessions)} unresolved NCBI IDs")
 
 fetcher = NCBIGenBankFetcher(
@@ -131,7 +152,7 @@ gene_info = _fetch_gene_info(gene_ids_found)
 
 # ── Build resolved / unresolved rows ─────────────────────────────────────────
 resolved_rows: list[dict] = []
-unresolved_rows: list[dict] = []
+unresolved_rows: list[dict] = list(junk_rows)
 
 for _, row in df_gb.iterrows():
     acc = row["accession"]
