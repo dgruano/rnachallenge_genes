@@ -50,15 +50,18 @@ out_unresolved = snakemake.output.unresolved
 # ── Log parser ────────────────────────────────────────────────
 # Patterns in priority order — first match wins.
 _FAIL_PATTERNS = [
-    (r"Permanent failure \(HTTP (\d+)\)[^\n]*not retrying[^\n]*", "HTTP {1} — not retrying"),
-    (r"Permanent failure \(HTTP (\d+)\)",                          "HTTP {1} permanent error"),
-    (r"HTTP (\d{3})",                                              "HTTP {1} error"),
-    (r"Decompression failed: ([^\n]+)",                            "decompression failed: {1}"),
-    (r"FAILED \(exit (\d+)\): ([^\n]+)",                           "samtools exit {1}: {2}"),
-    (r"Could not determine [^\n]+URL[^\n]*",                       None),   # use full match
-    (r"FTP directory listing[^\n]*contained no matching folder",   None),
-    (r"All download attempts failed",                              None),
-    (r"log unreadable",                                            None),
+    (
+        r"Permanent failure \(HTTP (\d+)\)[^\n]*not retrying[^\n]*",
+        "HTTP {1} — not retrying",
+    ),
+    (r"Permanent failure \(HTTP (\d+)\)", "HTTP {1} permanent error"),
+    (r"HTTP (\d{3})", "HTTP {1} error"),
+    (r"Decompression failed: ([^\n]+)", "decompression failed: {1}"),
+    (r"FAILED \(exit (\d+)\): ([^\n]+)", "samtools exit {1}: {2}"),
+    (r"Could not determine [^\n]+URL[^\n]*", None),  # use full match
+    (r"FTP directory listing[^\n]*contained no matching folder", None),
+    (r"All download attempts failed", None),
+    (r"log unreadable", None),
 ]
 
 
@@ -96,15 +99,15 @@ def parse_log_failure(log_path: str) -> str:
 # ── Build accession → log path index ─────────────────────────
 log_by_accession: dict[str, str] = {}
 for lf in log_files:
-    acc = Path(lf).stem   # e.g. logs/download_assembly/GCF_000001405.40.log → stem
+    acc = Path(lf).stem  # e.g. logs/download_assembly/GCF_000001405.40.log → stem
     log_by_accession[acc] = lf
 
 # ── Parse status files ────────────────────────────────────────
 ok_accessions: set[str] = set()
-failed_accessions: dict[str, str] = {}   # accession → failure detail
+failed_accessions: dict[str, str] = {}  # accession → failure detail
 
 for sf in status_files:
-    acc = Path(sf).parent.name   # resources/cache/GCF_.../  .download_done
+    acc = Path(sf).parent.name  # resources/cache/GCF_.../  .download_done
     try:
         content = Path(sf).read_text(errors="replace").strip()
     except OSError as exc:
@@ -114,7 +117,11 @@ for sf in status_files:
         ok_accessions.add(acc)
     else:
         # "failed: ..." from status file; augment with log details
-        log_detail = parse_log_failure(log_by_accession[acc]) if acc in log_by_accession else "no log"
+        log_detail = (
+            parse_log_failure(log_by_accession[acc])
+            if acc in log_by_accession
+            else "no log"
+        )
         failed_accessions[acc] = log_detail
 
 log.info(f"Status files parsed       : {len(status_files)}")
@@ -138,9 +145,8 @@ if not manifest_df.empty and "cache_key" in manifest_df.columns:
 df = pd.read_csv(resolved_path, sep="\t")
 
 # ── Build downloaded_df ───────────────────────────────────────
-downloaded_df = (
-    df[df["assembly_accession"].isin(ok_accessions)]
-    .drop_duplicates(subset="assembly_accession")
+downloaded_df = df[df["assembly_accession"].isin(ok_accessions)].drop_duplicates(
+    subset="assembly_accession"
 )
 
 # ── Build unresolved_df ───────────────────────────────────────

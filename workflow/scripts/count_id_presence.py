@@ -52,7 +52,9 @@ def read_species_ids(
             raise ValueError(f"TSV has no header: {tsv_path}")
 
         missing = [
-            col for col in (id_column, species_column) if col not in set(reader.fieldnames)
+            col
+            for col in (id_column, species_column)
+            if col not in set(reader.fieldnames)
         ]
         if missing:
             cols = ", ".join(missing)
@@ -125,7 +127,9 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("tsv", type=Path, help="Input TSV path")
-    parser.add_argument("species", type=str, help="Species name to filter (exact match)")
+    parser.add_argument(
+        "species", type=str, help="Species name to filter (exact match)"
+    )
     parser.add_argument(
         "gff",
         type=Path,
@@ -169,14 +173,14 @@ def _self_test() -> None:
     assert present == 3
     assert absent == 1
 
-    assert _extract_attribute_values('ID=transcript:ABC123') == ['transcript:ABC123']
-    assert _extract_attribute_values('Parent=gene:XYZ,transcript:ABC123') == [
-        'gene:XYZ',
-        'transcript:ABC123',
+    assert _extract_attribute_values("ID=transcript:ABC123") == ["transcript:ABC123"]
+    assert _extract_attribute_values("Parent=gene:XYZ,transcript:ABC123") == [
+        "gene:XYZ",
+        "transcript:ABC123",
     ]
-    assert _extract_attribute_values('transcript_id "ABC123"') == ['ABC123']
-    assert _extract_attribute_values('gene_id "XYZ"') == ['XYZ']
-    assert get_missing_ids(sample_ids, sample_gff) == ['B']
+    assert _extract_attribute_values('transcript_id "ABC123"') == ["ABC123"]
+    assert _extract_attribute_values('gene_id "XYZ"') == ["XYZ"]
+    assert get_missing_ids(sample_ids, sample_gff) == ["B"]
 
 
 def main() -> None:
@@ -210,7 +214,9 @@ def main() -> None:
 
     if args.missing_out is not None:
         args.missing_out.parent.mkdir(parents=True, exist_ok=True)
-        args.missing_out.write_text("\n".join(missing_ids) + ("\n" if missing_ids else ""))
+        args.missing_out.write_text(
+            "\n".join(missing_ids) + ("\n" if missing_ids else "")
+        )
 
     print(f"species={args.species}")
     print(f"total_ids={total}")

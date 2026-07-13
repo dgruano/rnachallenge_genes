@@ -23,27 +23,37 @@ from ncbi_genbank_fetcher import NCBIGenBankFetcher
 
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("resolve_ncbi_genbank", snakemake.log[0])  # type: ignore[name-defined]
-input_unresolved: str = snakemake.input.unresolved           # type: ignore[name-defined]
-out_resolved: str     = snakemake.output.resolved            # type: ignore[name-defined]
-out_unresolved: str   = snakemake.output.unresolved          # type: ignore[name-defined]
-cfg                   = snakemake.config                     # type: ignore[name-defined]
+input_unresolved: str = snakemake.input.unresolved  # type: ignore[name-defined]
+out_resolved: str = snakemake.output.resolved  # type: ignore[name-defined]
+out_unresolved: str = snakemake.output.unresolved  # type: ignore[name-defined]
+cfg = snakemake.config  # type: ignore[name-defined]
 
-Entrez.email   = cfg["ncbi_email"]
+Entrez.email = cfg["ncbi_email"]
 Entrez.api_key = cfg["ncbi_api_key"]
 
-MAX_RETRIES   = int(cfg.get("max_retries", 3))
-RETRY_WAIT    = float(cfg.get("retry_wait_seconds", 5))
-BATCH_SIZE    = int(cfg.get("ncbi_efetch_batch_size", 500))
-GENE_BATCH    = 200   # esummary gene IDs per request
+MAX_RETRIES = int(cfg.get("max_retries", 3))
+RETRY_WAIT = float(cfg.get("retry_wait_seconds", 5))
+BATCH_SIZE = int(cfg.get("ncbi_efetch_batch_size", 500))
+GENE_BATCH = 200  # esummary gene IDs per request
 
 RESOLVED_COLS = [
-    "transcript_id", "db_source", "gene_id", "gene_symbol", "organism",
-    "assembly_accession", "chrom", "start", "end", "strand", "is_ambiguous",
+    "transcript_id",
+    "db_source",
+    "gene_id",
+    "gene_symbol",
+    "organism",
+    "assembly_accession",
+    "chrom",
+    "start",
+    "end",
+    "strand",
+    "is_ambiguous",
 ]
 UNRESOLVED_COLS = ["transcript_id", "db_source", "reason"]
 
 
 # ── Gene-info lookup ──────────────────────────────────────────────────────────
+
 
 def _fetch_gene_info(gene_ids: list[str]) -> dict[str, dict]:
     """Batch-esummary a list of NCBI Gene IDs → genomic coordinate dicts."""
@@ -68,14 +78,14 @@ def _fetch_gene_info(gene_ids: list[str]) -> dict[str, dict]:
             gid = doc.attributes.get("uid", "")
             loc = (doc.get("GenomicInfo") or [{}])[0]
             info[gid] = {
-                "gene_id":            gid,
-                "gene_symbol":        doc.get("Name", ""),
-                "organism":           doc.get("Organism", {}).get("ScientificName", ""),
+                "gene_id": gid,
+                "gene_symbol": doc.get("Name", ""),
+                "organism": doc.get("Organism", {}).get("ScientificName", ""),
                 "assembly_accession": loc.get("ChrAccVer", ""),
-                "chrom":              loc.get("ChrLoc", ""),
-                "start":              int(loc.get("ChrStart", 0)),
-                "end":                int(loc.get("ChrStop", 0)),
-                "strand":             str(loc.get("ChrStrand", "")).strip() or "+",
+                "chrom": loc.get("ChrLoc", ""),
+                "start": int(loc.get("ChrStart", 0)),
+                "end": int(loc.get("ChrStop", 0)),
+                "strand": str(loc.get("ChrStrand", "")).strip() or "+",
             }
         time.sleep(0.12)
     return info
@@ -114,48 +124,64 @@ gene_ids_found = (
     .unique()
     .tolist()
 )
-log.info(f"Fetching genomic coordinates for {len(gene_ids_found)} gene IDs via esummary")
+log.info(
+    f"Fetching genomic coordinates for {len(gene_ids_found)} gene IDs via esummary"
+)
 gene_info = _fetch_gene_info(gene_ids_found)
 
 # ── Build resolved / unresolved rows ─────────────────────────────────────────
-resolved_rows:   list[dict] = []
+resolved_rows: list[dict] = []
 unresolved_rows: list[dict] = []
 
 for _, row in df_gb.iterrows():
-    acc      = row["accession"]
-    gid      = row["gene_id"]
-    gsym     = row["gene_symbol"] or ""
+    acc = row["accession"]
+    gid = row["gene_id"]
+    gsym = row["gene_symbol"] or ""
     organism = row["organism"] or ""
 
     if not gid or gid == "WITHDRAWN":
-        reason = "withdrawn_or_suppressed" if gid == "WITHDRAWN" else "no_gene_id_in_genbank"
-        unresolved_rows.append({"transcript_id": acc, "db_source": "ncbi", "reason": reason})
+        reason = (
+            "withdrawn_or_suppressed" if gid == "WITHDRAWN" else "no_gene_id_in_genbank"
+        )
+        unresolved_rows.append(
+            {"transcript_id": acc, "db_source": "ncbi", "reason": reason}
+        )
         log.warning(f"  {acc}: {reason}")
         continue
 
     coords = gene_info.get(str(gid), {})
-    resolved_rows.append({
-        "transcript_id":      acc,
-        "db_source":          "ncbi",
-        "gene_id":            gid,
-        "gene_symbol":        coords.get("gene_symbol", gsym),
-        "organism":           coords.get("organism", organism),
-        "assembly_accession": coords.get("assembly_accession", ""),
-        "chrom":              coords.get("chrom", ""),
-        "start":              coords.get("start", 0),
-        "end":                coords.get("end", 0),
-        "strand":             coords.get("strand", "+"),
-        "is_ambiguous":       False,
-    })
+    resolved_rows.append(
+        {
+            "transcript_id": acc,
+            "db_source": "ncbi",
+            "gene_id": gid,
+            "gene_symbol": coords.get("gene_symbol", gsym),
+            "organism": coords.get("organism", organism),
+            "assembly_accession": coords.get("assembly_accession", ""),
+            "chrom": coords.get("chrom", ""),
+            "start": coords.get("start", 0),
+            "end": coords.get("end", 0),
+            "strand": coords.get("strand", "+"),
+            "is_ambiguous": False,
+        }
+    )
 
 # Any accession in input not covered at all
-returned = {r["transcript_id"] for r in resolved_rows} | {r["transcript_id"] for r in unresolved_rows}
+returned = {r["transcript_id"] for r in resolved_rows} | {
+    r["transcript_id"] for r in unresolved_rows
+}
 for acc in accessions:
     if acc not in returned:
-        unresolved_rows.append({"transcript_id": acc, "db_source": "ncbi", "reason": "not_returned_by_efetch"})
+        unresolved_rows.append(
+            {
+                "transcript_id": acc,
+                "db_source": "ncbi",
+                "reason": "not_returned_by_efetch",
+            }
+        )
 
 # ── Write outputs ─────────────────────────────────────────────────────────────
-df_resolved   = pd.DataFrame(resolved_rows, columns=RESOLVED_COLS)
+df_resolved = pd.DataFrame(resolved_rows, columns=RESOLVED_COLS)
 df_unresolved = pd.DataFrame(unresolved_rows, columns=UNRESOLVED_COLS)
 
 df_resolved.to_csv(out_resolved, sep="\t", index=False)

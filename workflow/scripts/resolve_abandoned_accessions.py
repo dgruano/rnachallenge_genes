@@ -74,18 +74,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from Bio import SeqIO
-
 import pandas as pd
 import yaml
-from Bio import Entrez
+from Bio import Entrez, SeqIO
 
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
 from ncbi_entrez_utils import (
     batch_link_genes_to_assemblies,
-    resolve_assembly_uids_map,
     fetch_assembly_from_nuccore,
+    resolve_assembly_uids_map,
 )
 
 # ── Auto-detect mode: Snakemake vs CLI ────────────────────────────────────────
@@ -144,7 +142,15 @@ if not _is_snakemake:
             raise IndexError(f"Output index {idx} out of range")
 
     class _Snakemake:
-        def __init__(self, input_path, output_resolved, output_unresolved, config_path, cache_dir, log_path):
+        def __init__(
+            self,
+            input_path,
+            output_resolved,
+            output_unresolved,
+            config_path,
+            cache_dir,
+            log_path,
+        ):
             self.input = _Input(input_path)
             self.output = _Output(output_resolved, output_unresolved)
             self.log = [log_path] if log_path else ["/dev/null"]
@@ -182,10 +188,14 @@ Entrez.api_key = cfg["ncbi_api_key"]
 
 CACHE_DIR = Path(cfg["cache_dir"])
 MAX_RETRIES = int(cfg.get("max_retries", 3))
-RETRY_WAIT = float(cfg.get("retry_wait_seconds", 0.5))  # Reduced from 5; exponential backoff: 0.5s, 1s, 1.5s
+RETRY_WAIT = float(
+    cfg.get("retry_wait_seconds", 0.5)
+)  # Reduced from 5; exponential backoff: 0.5s, 1s, 1.5s
 BATCH_SIZE = int(cfg.get("ncbi_batch_size", 50))
 EFETCH_BATCH_SIZE = 50  # Batch up to 50 accessions per efetch call
-RATE_LIMIT_DELAY = 0.02  # 50 req/s = 0.02s minimum; API key allows 10 req/s base, but batching helps
+RATE_LIMIT_DELAY = (
+    0.02  # 50 req/s = 0.02s minimum; API key allows 10 req/s base, but batching helps
+)
 
 RESOLVED_COLS = [
     "transcript_id",
@@ -205,6 +215,7 @@ UNRESOLVED_COLS = ["transcript_id", "db_source", "reason"]
 
 # ── Retry helper ─────────────────────────────────────────────────────────────
 
+
 def _retry(fn, label: str):
     """Call ``fn()``; retry up to MAX_RETRIES times on any exception."""
     for attempt in range(1, MAX_RETRIES + 1):
@@ -221,7 +232,9 @@ def _retry(fn, label: str):
 # ── Step 2: efetch genomic record → assembly accession ──────────────────────
 
 _GENOMIC_PREFIXES = ("NC_", "NT_", "NW_", "AC_")
-_GENOMIC_RE = re.compile(r'\b((?:NC|NT|NW|AC)_\d+(\.\d+)?)\b')  # Version suffix is not mandatory
+_GENOMIC_RE = re.compile(
+    r"\b((?:NC|NT|NW|AC)_\d+(\.\d+)?)\b"
+)  # Version suffix is not mandatory
 
 
 def _extract_genomic_accession_from_record(gb_record) -> str | None:
@@ -282,7 +295,9 @@ def _extract_comment_accessions_from_record(gb_record) -> str | None:
     return None
 
 
-def fetch_genomic_accessions(accessions: list[str]) -> tuple[dict[str, str], dict[str, dict]]:
+def fetch_genomic_accessions(
+    accessions: list[str],
+) -> tuple[dict[str, str], dict[str, dict]]:
     """Step 1: ``{transcript_acc: genomic_accession}``.
 
     Batches up to EFETCH_BATCH_SIZE accessions per ``efetch(nucleotide, rettype=gb)`` call
@@ -292,7 +307,9 @@ def fetch_genomic_accessions(accessions: list[str]) -> tuple[dict[str, str], dic
     Returns: (results dict, tracking dict with detailed info per transcript)
     """
     results: dict[str, str] = {}
-    tracking: dict[str, dict] = {}  # transcript_id → {dbxrefs, comment, genomic_acc, etc}
+    tracking: dict[str, dict] = (
+        {}
+    )  # transcript_id → {dbxrefs, comment, genomic_acc, etc}
     total = len(accessions)
 
     # Process in batches of EFETCH_BATCH_SIZE
@@ -302,7 +319,9 @@ def fetch_genomic_accessions(accessions: list[str]) -> tuple[dict[str, str], dic
         batch_ids = ",".join(batch)
 
         if batch_end % 50 == 0 or batch_end == total:
-            log.info(f"  Step 1: {batch_end}/{total} transcripts fetched (batch {batch_start // EFETCH_BATCH_SIZE + 1})")
+            log.info(
+                f"  Step 1: {batch_end}/{total} transcripts fetched (batch {batch_start // EFETCH_BATCH_SIZE + 1})"
+            )
 
         def _fetch(ids=batch_ids):
             handle = Entrez.efetch(
@@ -311,10 +330,13 @@ def fetch_genomic_accessions(accessions: list[str]) -> tuple[dict[str, str], dic
             data = handle.read()
             handle.close()
             from io import StringIO
+
             return list(SeqIO.parse(StringIO(data), "genbank"))
 
         try:
-            gb_records = _retry(_fetch, f"efetch(nucleotide) batch [{batch[0]}...{batch[-1]}]")
+            gb_records = _retry(
+                _fetch, f"efetch(nucleotide) batch [{batch[0]}...{batch[-1]}]"
+            )
             for gb in gb_records:
                 acc = gb.id
                 if acc not in results:  # Avoid duplicates if parsing returns multiple
@@ -335,7 +357,9 @@ def fetch_genomic_accessions(accessions: list[str]) -> tuple[dict[str, str], dic
                     if genomic:
                         results[acc] = genomic
                     else:
-                        log.debug(f"  {acc}: no genomic accession found in GenBank record")
+                        log.debug(
+                            f"  {acc}: no genomic accession found in GenBank record"
+                        )
         except RuntimeError as exc:
             log.warning(f"  Batch [{batch[0]}...{batch[-1]}]: efetch failed — {exc}")
 
@@ -344,7 +368,9 @@ def fetch_genomic_accessions(accessions: list[str]) -> tuple[dict[str, str], dic
     return results, tracking
 
 
-def fetch_assembly_accessions(genomic_accs: list[str]) -> tuple[dict[str, str], dict[str, dict]]:
+def fetch_assembly_accessions(
+    genomic_accs: list[str],
+) -> tuple[dict[str, str], dict[str, dict]]:
     """Step 2: ``{genomic_accession: assembly_accession}``.
 
     Deduplicated: only unique genomic accessions are fetched.  Batches up to
@@ -355,7 +381,9 @@ def fetch_assembly_accessions(genomic_accs: list[str]) -> tuple[dict[str, str], 
     """
     unique = list(dict.fromkeys(genomic_accs))  # preserve order, deduplicate
     results: dict[str, str] = {}
-    tracking: dict[str, dict] = {}  # genomic_acc → {dbxrefs, organism, assembly_acc, etc}
+    tracking: dict[str, dict] = (
+        {}
+    )  # genomic_acc → {dbxrefs, organism, assembly_acc, etc}
     total = len(unique)
 
     # Process in batches of EFETCH_BATCH_SIZE
@@ -365,7 +393,9 @@ def fetch_assembly_accessions(genomic_accs: list[str]) -> tuple[dict[str, str], 
         batch_ids = ",".join(batch)
 
         if batch_end % EFETCH_BATCH_SIZE == 0 or batch_end == total:
-            log.info(f"  Step 2: {batch_end}/{total} genomic records fetched (batch {batch_start // EFETCH_BATCH_SIZE + 1})")
+            log.info(
+                f"  Step 2: {batch_end}/{total} genomic records fetched (batch {batch_start // EFETCH_BATCH_SIZE + 1})"
+            )
 
         def _fetch(ids=batch_ids):
             handle = Entrez.efetch(
@@ -374,10 +404,13 @@ def fetch_assembly_accessions(genomic_accs: list[str]) -> tuple[dict[str, str], 
             data = handle.read()
             handle.close()
             from io import StringIO
+
             return list(SeqIO.parse(StringIO(data), "genbank"))
 
         try:
-            gb_records = _retry(_fetch, f"efetch(nucleotide/genomic) batch [{batch[0]}...{batch[-1]}]")
+            gb_records = _retry(
+                _fetch, f"efetch(nucleotide/genomic) batch [{batch[0]}...{batch[-1]}]"
+            )
             for gb in gb_records:
                 gacc = gb.id
                 if gacc not in results:  # Avoid duplicates if parsing returns multiple
@@ -407,10 +440,8 @@ def fetch_assembly_accessions(genomic_accs: list[str]) -> tuple[dict[str, str], 
     return results, tracking
 
 
-
-
-
 # ── Step 3: Assembly accessions → FTP URLs (batched esummary) ────────────────
+
 
 def resolve_assembly_ftp(assembly_accessions: list[str]) -> dict[str, dict]:
     """
@@ -423,6 +454,7 @@ def resolve_assembly_ftp(assembly_accessions: list[str]) -> dict[str, dict]:
     # Phase 1: esearch per assembly to collect UIDs
     asm_to_uid: dict[str, str] = {}
     for asm in assembly_accessions:
+
         def _search(a=asm):
             handle = Entrez.esearch(
                 db="assembly", term=f"{a}[Assembly Accession]", retmax=1
@@ -460,7 +492,9 @@ def resolve_assembly_ftp(assembly_accessions: list[str]) -> dict[str, dict]:
             return summary
 
         try:
-            summary = _retry(_summary, f"esummary(assembly) FTP chunk {i // BATCH_SIZE + 1}")
+            summary = _retry(
+                _summary, f"esummary(assembly) FTP chunk {i // BATCH_SIZE + 1}"
+            )
         except RuntimeError as exc:
             log.error(str(exc))
             continue
@@ -499,6 +533,7 @@ def resolve_assembly_ftp(assembly_accessions: list[str]) -> dict[str, dict]:
 
 # ── Step 4: Download assembly GTF ────────────────────────────────────────────
 
+
 def download_gtf(assembly_acc: str, urls: list[str]) -> Path | None:
     """
     Download the assembly GTF/GFF to cache; return path to ``.gz`` or ``None``.
@@ -520,7 +555,9 @@ def download_gtf(assembly_acc: str, urls: list[str]) -> Path | None:
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 urllib.request.urlretrieve(url, gz_path)
-                log.info(f"  Downloaded → {gz_path} ({gz_path.stat().st_size / 1e6:.1f} MB)")
+                log.info(
+                    f"  Downloaded → {gz_path} ({gz_path.stat().st_size / 1e6:.1f} MB)"
+                )
                 return gz_path
             except Exception as exc:
                 log.warning(
@@ -531,13 +568,18 @@ def download_gtf(assembly_acc: str, urls: list[str]) -> Path | None:
                 if attempt < MAX_RETRIES:
                     time.sleep(RETRY_WAIT * attempt)
 
-        log.warning(f"  All {file_format} download attempts failed for {assembly_acc}, trying next format…")
+        log.warning(
+            f"  All {file_format} download attempts failed for {assembly_acc}, trying next format…"
+        )
 
-    log.error(f"  All download attempts failed for {assembly_acc} (tried {len(urls)} format(s))")
+    log.error(
+        f"  All download attempts failed for {assembly_acc} (tried {len(urls)} format(s))"
+    )
     return None
 
 
 # ── Step 5: Batch GTF extraction (2 passes per assembly, not per transcript) ──
+
 
 def _parse_gtf_attr(attribute: str, key: str) -> str:
     """Extract a quoted value from a GTF attribute string."""
@@ -545,9 +587,7 @@ def _parse_gtf_attr(attribute: str, key: str) -> str:
     return match.group(1) if match else ""
 
 
-def extract_all_from_gtf(
-    gtf_gz: Path, transcript_ids: set[str]
-) -> dict[str, dict]:
+def extract_all_from_gtf(gtf_gz: Path, transcript_ids: set[str]) -> dict[str, dict]:
     """
     Extract gene-level annotations for **all** ``transcript_ids`` in one
     pair of sequential passes over the GTF file.
@@ -623,10 +663,10 @@ def extract_all_from_gtf(
                 if gene_id not in gene_ids_needed:
                     continue
                 gene_info[gene_id] = {
-                    "chrom":       parts[0],
-                    "start":       int(parts[3]) - 1,  # GTF 1-based → 0-based
-                    "end":         int(parts[4]),       # GTF inclusive → half-open
-                    "strand":      parts[6],
+                    "chrom": parts[0],
+                    "start": int(parts[3]) - 1,  # GTF 1-based → 0-based
+                    "end": int(parts[4]),  # GTF inclusive → half-open
+                    "strand": parts[6],
                     "gene_symbol": (
                         _parse_gtf_attr(attr, "gene_name")
                         or _parse_gtf_attr(attr, "gene")
@@ -650,12 +690,12 @@ def extract_all_from_gtf(
         if info is None:
             continue
         result[tx_id] = {
-            "gene_id":     gene_id,
+            "gene_id": gene_id,
             "gene_symbol": info["gene_symbol"] or gene_sym,
-            "chrom":       info["chrom"],
-            "start":       info["start"],
-            "end":         info["end"],
-            "strand":      info["strand"],
+            "chrom": info["chrom"],
+            "start": info["start"],
+            "end": info["end"],
+            "strand": info["strand"],
         }
 
     return result
@@ -724,12 +764,12 @@ def extract_annotations_by_geneid(
                 )
 
                 gene_features[numeric_gid] = {
-                    "gene_id":     gene_id_attr,
+                    "gene_id": gene_id_attr,
                     "gene_symbol": gene_symbol,
-                    "chrom":       parts[0],
-                    "start":       int(parts[3]) - 1,  # GTF 1-based → 0-based
-                    "end":         int(parts[4]),
-                    "strand":      parts[6],
+                    "chrom": parts[0],
+                    "start": int(parts[3]) - 1,  # GTF 1-based → 0-based
+                    "end": int(parts[4]),
+                    "strand": parts[6],
                 }
                 needed.discard(numeric_gid)
     except Exception as exc:
@@ -754,6 +794,7 @@ def extract_annotations_by_geneid(
 
 
 # ── Helper: collect Gene IDs for a transcript from tracking dicts ─────────────
+
 
 def _collect_geneids_for_tx(acc: str) -> list[str]:
     """Return deduplicated Gene ID list from all_tracking for *acc*.
@@ -813,7 +854,9 @@ log.info(
 )
 genomic_to_assembly, genomic_tracking = fetch_assembly_accessions(unique_genomic)
 all_tracking.update(genomic_tracking)
-log.info(f"  Assembly accessions found: {len(genomic_to_assembly)}/{len(unique_genomic)}")
+log.info(
+    f"  Assembly accessions found: {len(genomic_to_assembly)}/{len(unique_genomic)}"
+)
 
 # Build transcript → assembly map from Steps 1+2
 acc_to_assembly: dict[str, str] = {}
@@ -824,7 +867,9 @@ for acc in accessions:
         if asm:
             acc_to_assembly[acc] = asm
 
-log.info(f"  Transcripts with assembly accession: {len(acc_to_assembly)}/{len(accessions)}")
+log.info(
+    f"  Transcripts with assembly accession: {len(acc_to_assembly)}/{len(accessions)}"
+)
 
 # ── Phase 1 / Step 3: Gene ID → assembly for transcripts still missing one ───
 #
@@ -837,7 +882,7 @@ log.info(f"  Transcripts with assembly accession: {len(acc_to_assembly)}/{len(ac
 # for discontinued genes and cause hangs.
 
 acc_to_geneids: dict[str, list[str]] = {}
-gid_to_accs:    dict[str, list[str]] = {}
+gid_to_accs: dict[str, list[str]] = {}
 for acc in accessions:
     if acc not in acc_to_assembly:
         gids = _collect_geneids_for_tx(acc)
@@ -859,7 +904,9 @@ if all_unresolved_gids:
     log.info(
         f"  Phase A: elink gene→assembly for {len(all_unresolved_gids)} gene ID(s) …"
     )
-    gene_asm_link = batch_link_genes_to_assemblies(all_unresolved_gids, RATE_LIMIT_DELAY)
+    gene_asm_link = batch_link_genes_to_assemblies(
+        all_unresolved_gids, RATE_LIMIT_DELAY
+    )
     n_linked = sum(1 for uids in gene_asm_link.values() if uids)
     log.info(
         f"  Phase A done: {n_linked}/{len(all_unresolved_gids)} gene(s) linked to ≥1 assembly UID"
@@ -868,16 +915,18 @@ if all_unresolved_gids:
     # Phase B: batch esummary UIDs → assembly accessions
     all_asm_uids = [uid for uids in gene_asm_link.values() for uid in uids]
     n_unique_uids = len(set(all_asm_uids))
-    log.info(
-        f"  Phase B: esummary for {n_unique_uids} unique assembly UID(s) …"
+    log.info(f"  Phase B: esummary for {n_unique_uids} unique assembly UID(s) …")
+    asm_uid_map = (
+        resolve_assembly_uids_map(all_asm_uids, RATE_LIMIT_DELAY)
+        if all_asm_uids
+        else {}
     )
-    asm_uid_map  = resolve_assembly_uids_map(all_asm_uids, RATE_LIMIT_DELAY) if all_asm_uids else {}
     log.info(f"  Phase B done: {len(asm_uid_map)} assembly UID(s) resolved")
 
     for gid, uids in gene_asm_link.items():
         if uids:
             asm_info = asm_uid_map.get(uids[0], {})
-            asm_acc  = asm_info.get("assembly_accession", "")
+            asm_acc = asm_info.get("assembly_accession", "")
             if asm_acc and asm_acc != "N/A":
                 gene_to_asm[gid] = asm_acc
 
@@ -894,13 +943,15 @@ if all_unresolved_gids:
         # returned empty was retried for every other gene ID mapping to the same
         # transcript — multiplying API calls for discontinued scaffolds.
         _SCAFFOLD_PREFIXES_C = ("NC_", "NT_", "NW_", "NZ_")
-        unique_scaffolds: list[str] = list(dict.fromkeys(
-            scaffold
-            for gid in gids_no_elink
-            for acc in gid_to_accs.get(gid, [])
-            for scaffold in [acc_to_genomic.get(acc, "")]
-            if scaffold and scaffold.startswith(_SCAFFOLD_PREFIXES_C)
-        ))
+        unique_scaffolds: list[str] = list(
+            dict.fromkeys(
+                scaffold
+                for gid in gids_no_elink
+                for acc in gid_to_accs.get(gid, [])
+                for scaffold in [acc_to_genomic.get(acc, "")]
+                if scaffold and scaffold.startswith(_SCAFFOLD_PREFIXES_C)
+            )
+        )
         n_no_scaffold = len(gids_no_elink) - len(unique_scaffolds)
         log.info(
             f"  Phase C: nuccore fallback for {len(unique_scaffolds)} unique scaffold(s) "
@@ -909,7 +960,7 @@ if all_unresolved_gids:
         scaffold_to_asm: dict[str, str] = {}
         for i, scaffold in enumerate(unique_scaffolds, 1):
             asm_data = fetch_assembly_from_nuccore(scaffold, RATE_LIMIT_DELAY)
-            asm_acc  = asm_data.get("assembly_accession", "")
+            asm_acc = asm_data.get("assembly_accession", "")
             if asm_acc and asm_acc not in ("N/A", ""):
                 scaffold_to_asm[scaffold] = asm_acc
                 log.info(f"  [{i}/{len(unique_scaffolds)}] {scaffold} → {asm_acc}")
@@ -1041,17 +1092,17 @@ for acc in accessions:
     if annotation:
         resolved_rows.append(
             {
-                "transcript_id":      acc,
-                "db_source":          "ncbi",
-                "gene_id":            annotation["gene_id"],
-                "gene_symbol":        annotation["gene_symbol"],
-                "organism":           organism,
+                "transcript_id": acc,
+                "db_source": "ncbi",
+                "gene_id": annotation["gene_id"],
+                "gene_symbol": annotation["gene_symbol"],
+                "organism": organism,
                 "assembly_accession": asm,
-                "chrom":              annotation["chrom"],
-                "start":              annotation["start"],
-                "end":                annotation["end"],
-                "strand":             annotation["strand"],
-                "is_ambiguous":       False,
+                "chrom": annotation["chrom"],
+                "start": annotation["start"],
+                "end": annotation["end"],
+                "strand": annotation["strand"],
+                "is_ambiguous": False,
             }
         )
         continue
@@ -1061,17 +1112,17 @@ for acc in accessions:
     if annotation:
         resolved_rows.append(
             {
-                "transcript_id":      acc,
-                "db_source":          "ncbi",
-                "gene_id":            annotation["gene_id"],
-                "gene_symbol":        annotation["gene_symbol"],
-                "organism":           organism,
+                "transcript_id": acc,
+                "db_source": "ncbi",
+                "gene_id": annotation["gene_id"],
+                "gene_symbol": annotation["gene_symbol"],
+                "organism": organism,
                 "assembly_accession": asm,
-                "chrom":              annotation["chrom"],
-                "start":              annotation["start"],
-                "end":                annotation["end"],
-                "strand":             annotation["strand"],
-                "is_ambiguous":       True,  # resolved via Gene ID, not transcript
+                "chrom": annotation["chrom"],
+                "start": annotation["start"],
+                "end": annotation["end"],
+                "strand": annotation["strand"],
+                "is_ambiguous": True,  # resolved via Gene ID, not transcript
             }
         )
         continue
@@ -1088,14 +1139,14 @@ log.info(
 )
 
 # ── Write outputs ─────────────────────────────────────────────────────────────
-df_resolved   = pd.DataFrame(resolved_rows,   columns=RESOLVED_COLS)
+df_resolved = pd.DataFrame(resolved_rows, columns=RESOLVED_COLS)
 df_unresolved = pd.DataFrame(unresolved_rows, columns=UNRESOLVED_COLS)
 
-df_resolved.to_csv(out_resolved,   sep="\t", index=False)
+df_resolved.to_csv(out_resolved, sep="\t", index=False)
 df_unresolved.to_csv(out_unresolved, sep="\t", index=False)
 
 # ── Write detailed debugging TSV ──────────────────────────────────────────────
-resolved_set   = {r["transcript_id"] for r in resolved_rows}
+resolved_set = {r["transcript_id"] for r in resolved_rows}
 unresolved_map = {r["transcript_id"]: r["reason"] for r in unresolved_rows}
 
 debug_rows = []
@@ -1110,17 +1161,21 @@ for acc in accessions:
     genomic_acc = acc_to_genomic.get(acc)
     if genomic_acc and genomic_acc in all_tracking:
         row.update(
-            {k: v for k, v in all_tracking[genomic_acc].items() if k != "genomic_accession"}
+            {
+                k: v
+                for k, v in all_tracking[genomic_acc].items()
+                if k != "genomic_accession"
+            }
         )
 
     row["assembly_accession_found"] = acc_to_assembly.get(acc, "")
-    row["gene_ids"]                 = ";".join(acc_to_geneids.get(acc, []))
-    row["resolution_status"]        = "resolved" if acc in resolved_set else "unresolved"
-    row["unresolved_reason"]        = unresolved_map.get(acc, "")
-    row["resolution_strategy"]      = (
-        "transcript_id" if acc in gtf_annotations
-        else "gene_id"  if acc in gtf_annotations_geneid
-        else ""
+    row["gene_ids"] = ";".join(acc_to_geneids.get(acc, []))
+    row["resolution_status"] = "resolved" if acc in resolved_set else "unresolved"
+    row["unresolved_reason"] = unresolved_map.get(acc, "")
+    row["resolution_strategy"] = (
+        "transcript_id"
+        if acc in gtf_annotations
+        else "gene_id" if acc in gtf_annotations_geneid else ""
     )
     debug_rows.append(row)
 
@@ -1139,4 +1194,3 @@ if not df_unresolved.empty:
 log.info(f"Written → {out_resolved}")
 log.info(f"Debug TSV → {debug_path}")
 log.info("resolve_abandoned_accessions complete.")
-

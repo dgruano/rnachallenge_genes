@@ -24,7 +24,6 @@ import xml.etree.ElementTree as ET
 
 from Bio import Entrez
 
-
 CHUNK_SIZE = 200
 
 # Matches "Assembly: GCF_000002655.1" in a GenBank flatfile DBLINK block.
@@ -35,6 +34,7 @@ _SCAFFOLD_PREFIXES = ("NW_", "NC_", "NT_", "NZ_")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
@@ -51,13 +51,13 @@ def _parse_entrezgene_element(el):
       mrna_accs (list), protein_accs (list), update_date
     """
     result = {
-        "gene_id":      "",
-        "gene_status":  "unknown",
-        "locus_tag":    "",
+        "gene_id": "",
+        "gene_status": "unknown",
+        "locus_tag": "",
         "scaffold_acc": "",
-        "mrna_accs":    [],
+        "mrna_accs": [],
         "protein_accs": [],
-        "update_date":  "",
+        "update_date": "",
     }
 
     gid_el = el.find(".//Gene-track_geneid")
@@ -116,12 +116,13 @@ def _parse_entrezgene_element(el):
                         ver = f".{prot_ver.text}" if prot_ver is not None else ""
                         result["protein_accs"].append(f"{prot_acc.text}{ver}")
 
-    result["mrna_accs"]    = list(dict.fromkeys(result["mrna_accs"]))
+    result["mrna_accs"] = list(dict.fromkeys(result["mrna_accs"]))
     result["protein_accs"] = list(dict.fromkeys(result["protein_accs"]))
     return result
 
 
 # ── Batch fetchers ────────────────────────────────────────────────────────────
+
 
 def batch_fetch_gene_info(gene_ids, delay):
     """
@@ -143,7 +144,8 @@ def batch_fetch_gene_info(gene_ids, delay):
                 db="gene",
                 webenv=post_result["WebEnv"],
                 query_key=post_result["QueryKey"],
-                rettype="xml", retmode="xml",
+                rettype="xml",
+                retmode="xml",
             )
             xml_bytes = fetch_handle.read()
             fetch_handle.close()
@@ -154,9 +156,9 @@ def batch_fetch_gene_info(gene_ids, delay):
             except ET.ParseError:
                 continue
 
-            elements = (root.findall("Entrezgene")
-                        if root.tag == "Entrezgene-Set"
-                        else [root])
+            elements = (
+                root.findall("Entrezgene") if root.tag == "Entrezgene-Set" else [root]
+            )
             for el in elements:
                 info = _parse_entrezgene_element(el)
                 gid = info.get("gene_id", "")
@@ -180,9 +182,7 @@ def batch_link_genes_to_assemblies(gene_ids, delay):
     results = {}
     for chunk in chunks(gene_ids, CHUNK_SIZE):
         try:
-            link_handle = Entrez.elink(
-                dbfrom="gene", db="assembly", id=",".join(chunk)
-            )
+            link_handle = Entrez.elink(dbfrom="gene", db="assembly", id=",".join(chunk))
             link_result = Entrez.read(link_handle)
             link_handle.close()
             time.sleep(delay)
@@ -210,7 +210,7 @@ def resolve_assembly_uids_map(assembly_uids, delay):
     record_dict keys: assembly_accession, assembly_name, seq_release_date,
                       organism, assembly_status
     """
-    unique = list(dict.fromkeys(assembly_uids))   # deduplicate, preserve order
+    unique = list(dict.fromkeys(assembly_uids))  # deduplicate, preserve order
     if not unique:
         return {}
 
@@ -222,17 +222,17 @@ def resolve_assembly_uids_map(assembly_uids, delay):
             summary_handle.close()
             time.sleep(delay)
 
-            doc_summaries = (summary_result
-                             .get("DocumentSummarySet", {})
-                             .get("DocumentSummary", []))
+            doc_summaries = summary_result.get("DocumentSummarySet", {}).get(
+                "DocumentSummary", []
+            )
             for doc in doc_summaries:
                 uid = doc.attributes.get("uid", "")
                 uid_map[uid] = {
                     "assembly_accession": doc.get("AssemblyAccession", "N/A"),
-                    "assembly_name":      doc.get("AssemblyName",      "N/A"),
-                    "seq_release_date":   doc.get("SeqReleaseDate",    "N/A"),
-                    "organism":           doc.get("Organism",          "N/A"),
-                    "assembly_status":    doc.get("AssemblyStatus",    "N/A"),
+                    "assembly_name": doc.get("AssemblyName", "N/A"),
+                    "seq_release_date": doc.get("SeqReleaseDate", "N/A"),
+                    "organism": doc.get("Organism", "N/A"),
+                    "assembly_status": doc.get("AssemblyStatus", "N/A"),
                 }
         except Exception:
             pass
@@ -241,6 +241,7 @@ def resolve_assembly_uids_map(assembly_uids, delay):
 
 
 # ── Per-gene nuccore fallback ─────────────────────────────────────────────────
+
 
 def fetch_assembly_accession_from_dblink(nuccore_uid, delay):
     """
@@ -251,8 +252,9 @@ def fetch_assembly_accession_from_dblink(nuccore_uid, delay):
     Returns an accession string (e.g. ``'GCF_000002655.1'``) or ``None``.
     """
     try:
-        handle = Entrez.efetch(db="nuccore", id=nuccore_uid,
-                               rettype="gb", retmode="text")
+        handle = Entrez.efetch(
+            db="nuccore", id=nuccore_uid, rettype="gb", retmode="text"
+        )
         assembly_acc = None
         for line in handle:
             if line.startswith("FEATURES"):

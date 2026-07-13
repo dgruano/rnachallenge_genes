@@ -26,7 +26,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from urllib.parse import parse_qs, urljoin, urlparse, quote, unquote
+from urllib.parse import parse_qs, quote, unquote, urljoin, urlparse
 
 import requests
 import yaml
@@ -42,7 +42,7 @@ datasets_dir = Path(snakemake.params.datasets_dir)
 
 # ── Constants ────────────────────────────────────────────────
 REQUEST_TIMEOUT = 30  # seconds per HTTP request
-RETRY_WAIT = 5        # seconds between retries
+RETRY_WAIT = 5  # seconds between retries
 MAX_RETRIES = 3
 GITHUB_API = "https://api.github.com"
 OSF_API = "https://api.osf.io/v2"
@@ -52,6 +52,7 @@ FASTA_EXTENSIONS = {".fa", ".fasta", ".faa", ".fa.gz", ".fasta.gz", ".faa.gz", "
 
 
 # ── HTTP helper ──────────────────────────────────────────────
+
 
 def _get(url: str, **kwargs) -> requests.Response | None:
     """GET with retry and graceful failure. Returns None on any error."""
@@ -102,13 +103,18 @@ def _safe_filename(url: str, fallback: str) -> str:
             name = candidate
     # Fall back to query-string filenames when the path points to a generic
     # download script such as download.php or download_file.php.
-    elif not name or "." not in name or name.lower() in {
-        "download",
-        "download.php",
-        "download_file",
-        "download_file.php",
-        "download.cgi",
-    }:
+    elif (
+        not name
+        or "." not in name
+        or name.lower()
+        in {
+            "download",
+            "download.php",
+            "download_file",
+            "download_file.php",
+            "download.cgi",
+        }
+    ):
         qs = parsed.query
         m = re.search(r"filename=([^&]+)", qs)
         if m:
@@ -175,11 +181,11 @@ def _extract_sourceforge_files_from_html(
             if not matched_root:
                 continue
 
-            tail = path[len(matched_root):].strip("/")
+            tail = path[len(matched_root) :].strip("/")
             if path_prefix and not tail.startswith(path_prefix):
                 continue
             if path_prefix:
-                tail = tail[len(path_prefix):]
+                tail = tail[len(path_prefix) :]
 
             if "/download" not in tail:
                 continue
@@ -227,11 +233,11 @@ def _extract_sourceforge_files_from_rss(
         if not matched_root:
             continue
 
-        tail = path[len(matched_root):].strip("/")
+        tail = path[len(matched_root) :].strip("/")
         if path_prefix and not tail.startswith(path_prefix):
             continue
         if path_prefix:
-            tail = tail[len(path_prefix):]
+            tail = tail[len(path_prefix) :]
 
         if "/download" not in tail:
             continue
@@ -239,7 +245,9 @@ def _extract_sourceforge_files_from_rss(
         rel_file = unquote(tail.split("/download", 1)[0].strip("/"))
         if not rel_file:
             continue
-        if not include_all_files and not _is_fasta_like(Path(rel_file).name, allowed_extensions):
+        if not include_all_files and not _is_fasta_like(
+            Path(rel_file).name, allowed_extensions
+        ):
             continue
         if rel_file in seen:
             continue
@@ -251,6 +259,7 @@ def _extract_sourceforge_files_from_rss(
 
 
 # ── Strategy implementations ─────────────────────────────────
+
 
 def _download_github(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
     """
@@ -300,13 +309,23 @@ def _download_github(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
                     continue
                 dest = out_dir / name
                 if cached := _already_downloaded(dest, dl_url, tool):
-                    results.append(cached); continue
+                    results.append(cached)
+                    continue
                 log.info(f"  [{tool}] Downloading {name} ...")
                 resp2 = _get(dl_url)
                 if resp2 and _save(resp2.content, dest):
-                    results.append({"tool": tool, "file": str(dest), "url": dl_url, "status": "ok"})
+                    results.append(
+                        {"tool": tool, "file": str(dest), "url": dl_url, "status": "ok"}
+                    )
                 else:
-                    results.append({"tool": tool, "file": str(dest), "url": dl_url, "status": "failed"})
+                    results.append(
+                        {
+                            "tool": tool,
+                            "file": str(dest),
+                            "url": dl_url,
+                            "status": "failed",
+                        }
+                    )
 
     for path_item in paths_to_process:
         _list_and_download(path_item)
@@ -318,14 +337,19 @@ def _download_direct_list(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
     results = []
     used_names: set[str] = set()
     for url in cfg.get("urls", []):
-        name = _safe_filename(url, f"file_{hashlib.md5(url.encode()).hexdigest()[:8]}.fa")
+        name = _safe_filename(
+            url, f"file_{hashlib.md5(url.encode()).hexdigest()[:8]}.fa"
+        )
         dest = _dedupe_dest_name(out_dir / name, url, used_names)
         if cached := _already_downloaded(dest, url, tool):
-            results.append(cached); continue
+            results.append(cached)
+            continue
         log.info(f"  [{tool}] Downloading {name} from {url} ...")
         resp = _get(url)
         if resp and _save(resp.content, dest):
-            results.append({"tool": tool, "file": str(dest), "url": url, "status": "ok"})
+            results.append(
+                {"tool": tool, "file": str(dest), "url": url, "status": "ok"}
+            )
         else:
             results.append({"tool": tool, "file": "", "url": url, "status": "failed"})
     return results
@@ -356,11 +380,18 @@ def _download_sourceforge(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
         log.info(f"  [{tool}] Fetching SourceForge listing: {api_url}")
         resp = _get(api_url, headers={"Accept": "application/json"})
         if resp is None:
-            log.warning(f"  [{tool}] SourceForge API unavailable for path '{sf_path}' — skip")
-            results.append({
-                "tool": tool, "file": "", "url": api_url, "status": "skipped",
-                "note": f"Manual download from https://sourceforge.net/projects/{project}/files/{sf_path}/",
-            })
+            log.warning(
+                f"  [{tool}] SourceForge API unavailable for path '{sf_path}' — skip"
+            )
+            results.append(
+                {
+                    "tool": tool,
+                    "file": "",
+                    "url": api_url,
+                    "status": "skipped",
+                    "note": f"Manual download from https://sourceforge.net/projects/{project}/files/{sf_path}/",
+                }
+            )
             continue
 
         try:
@@ -383,7 +414,9 @@ def _download_sourceforge(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
                 fallback_source = "html"
 
             if not fallback_files:
-                rss_url = f"https://sourceforge.net/projects/{project}/rss?path=/{sf_path}"
+                rss_url = (
+                    f"https://sourceforge.net/projects/{project}/rss?path=/{sf_path}"
+                )
                 log.info(f"  [{tool}] Trying SourceForge RSS fallback: {rss_url}")
                 rss_resp = _get(rss_url)
                 if rss_resp is not None:
@@ -398,16 +431,18 @@ def _download_sourceforge(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
                         fallback_source = "rss"
 
             if not fallback_files:
-                results.append({
-                    "tool": tool,
-                    "file": "",
-                    "url": api_url,
-                    "status": "failed",
-                    "note": (
-                        f"SourceForge listing for '{sf_path}' is not JSON and no files "
-                        "were discovered via HTML/RSS fallback"
-                    ),
-                })
+                results.append(
+                    {
+                        "tool": tool,
+                        "file": "",
+                        "url": api_url,
+                        "status": "failed",
+                        "note": (
+                            f"SourceForge listing for '{sf_path}' is not JSON and no files "
+                            "were discovered via HTML/RSS fallback"
+                        ),
+                    }
+                )
                 continue
 
             log.info(
@@ -426,13 +461,17 @@ def _download_sourceforge(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
             files = data.get("files", [])
 
         if not files:
-            log.warning(f"  [{tool}] SourceForge returned empty listing for path '{sf_path}'")
+            log.warning(
+                f"  [{tool}] SourceForge returned empty listing for path '{sf_path}'"
+            )
 
         for item in files:
             name = item.get("name", "")
             from_fallback = bool(item.get("from_sourceforge_fallback", False))
             fallback_source = item.get("sourceforge_fallback_source", "")
-            allow_non_fasta_from_rss = from_fallback and fallback_source == "rss" and rss_include_all
+            allow_non_fasta_from_rss = (
+                from_fallback and fallback_source == "rss" and rss_include_all
+            )
 
             if not allow_non_fasta_from_rss and not _is_fasta_like(name, extensions):
                 continue
@@ -440,13 +479,18 @@ def _download_sourceforge(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
             dl_url = f"https://downloads.sourceforge.net/project/{project}/{sf_path}/{encoded_name}"
             dest = out_dir / Path(name).name
             if cached := _already_downloaded(dest, dl_url, tool):
-                results.append(cached); continue
+                results.append(cached)
+                continue
             log.info(f"  [{tool}] Downloading {name} ...")
             resp2 = _get(dl_url, allow_redirects=True)
             if resp2 and _save(resp2.content, dest):
-                results.append({"tool": tool, "file": str(dest), "url": dl_url, "status": "ok"})
+                results.append(
+                    {"tool": tool, "file": str(dest), "url": dl_url, "status": "ok"}
+                )
             else:
-                results.append({"tool": tool, "file": "", "url": dl_url, "status": "failed"})
+                results.append(
+                    {"tool": tool, "file": "", "url": dl_url, "status": "failed"}
+                )
 
     return results
 
@@ -465,8 +509,15 @@ def _download_osf(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
         resp = _get(next_url)
         if resp is None:
             log.warning(f"  [{tool}] OSF API unavailable")
-            results.append({"tool": tool, "file": "", "url": next_url, "status": "skipped",
-                            "note": f"Manual download from https://osf.io/{node_id}/"})
+            results.append(
+                {
+                    "tool": tool,
+                    "file": "",
+                    "url": next_url,
+                    "status": "skipped",
+                    "note": f"Manual download from https://osf.io/{node_id}/",
+                }
+            )
             break
         try:
             data = resp.json()
@@ -499,13 +550,28 @@ def _download_osf(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
                                     continue
                                 dest = out_dir / sub_name
                                 if cached := _already_downloaded(dest, dl_url, tool):
-                                    results.append(cached); continue
+                                    results.append(cached)
+                                    continue
                                 log.info(f"  [{tool}] Downloading {sub_name} ...")
                                 dl_resp = _get(dl_url)
                                 if dl_resp and _save(dl_resp.content, dest):
-                                    results.append({"tool": tool, "file": str(dest), "url": dl_url, "status": "ok"})
+                                    results.append(
+                                        {
+                                            "tool": tool,
+                                            "file": str(dest),
+                                            "url": dl_url,
+                                            "status": "ok",
+                                        }
+                                    )
                                 else:
-                                    results.append({"tool": tool, "file": "", "url": dl_url, "status": "failed"})
+                                    results.append(
+                                        {
+                                            "tool": tool,
+                                            "file": "",
+                                            "url": dl_url,
+                                            "status": "failed",
+                                        }
+                                    )
                         except ValueError:
                             pass
                 continue
@@ -517,13 +583,18 @@ def _download_osf(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
                 continue
             dest = out_dir / name
             if cached := _already_downloaded(dest, dl_url, tool):
-                results.append(cached); continue
+                results.append(cached)
+                continue
             log.info(f"  [{tool}] Downloading {name} ...")
             dl_resp = _get(dl_url)
             if dl_resp and _save(dl_resp.content, dest):
-                results.append({"tool": tool, "file": str(dest), "url": dl_url, "status": "ok"})
+                results.append(
+                    {"tool": tool, "file": str(dest), "url": dl_url, "status": "ok"}
+                )
             else:
-                results.append({"tool": tool, "file": "", "url": dl_url, "status": "failed"})
+                results.append(
+                    {"tool": tool, "file": "", "url": dl_url, "status": "failed"}
+                )
 
         # Follow pagination
         links = data.get("links", {})
@@ -562,14 +633,18 @@ def _download_readme_dir(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
                 "skipping all filename probing. MANUAL DOWNLOAD REQUIRED.\n"
                 f"  Place .fa/.fasta files in {out_dir}"
             )
-            return [{
-                "tool": tool, "file": "", "url": base_url,
-                "status": "manual_required",
-                "note": (
-                    f"Server at {base_url} appears offline (404/connection error). "
-                    f"Download manually and place .fa/.fasta files in {out_dir}"
-                ),
-            }]
+            return [
+                {
+                    "tool": tool,
+                    "file": "",
+                    "url": base_url,
+                    "status": "manual_required",
+                    "note": (
+                        f"Server at {base_url} appears offline (404/connection error). "
+                        f"Download manually and place .fa/.fasta files in {out_dir}"
+                    ),
+                }
+            ]
     else:
         probe_resp = None
 
@@ -592,12 +667,16 @@ def _download_readme_dir(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
             for line in resp.text.splitlines():
                 for ext in [".fa", ".fasta", ".gz", ".bed", ".gtf"]:
                     if ext in line.lower():
-                        for tok in re.findall(r'\S+' + re.escape(ext) + r'\S*', line, re.IGNORECASE):
+                        for tok in re.findall(
+                            r"\S+" + re.escape(ext) + r"\S*", line, re.IGNORECASE
+                        ):
                             tok = tok.strip(".,;:\"'()")
                             if "/" not in tok:
                                 all_fasta_urls.append(f"{dir_url}/{tok}")
         else:
-            log.warning(f"  [{tool}] README not accessible at {readme_url} — skipping subdir")
+            log.warning(
+                f"  [{tool}] README not accessible at {readme_url} — skipping subdir"
+            )
 
     # ── Download discovered files ─────────────────────────────────────────
     all_fasta_urls = list(dict.fromkeys(all_fasta_urls))  # deduplicate, preserve order
@@ -608,20 +687,30 @@ def _download_readme_dir(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
             continue
         dest = out_dir / name
         if cached := _already_downloaded(dest, url, tool):
-            results.append(cached); continue
+            results.append(cached)
+            continue
         log.info(f"  [{tool}] Downloading {name} ...")
         resp = _get(url)
         if resp and _save(resp.content, dest):
-            results.append({"tool": tool, "file": str(dest), "url": url, "status": "ok"})
+            results.append(
+                {"tool": tool, "file": str(dest), "url": url, "status": "ok"}
+            )
         else:
             results.append({"tool": tool, "file": "", "url": url, "status": "failed"})
 
     if not any(r["status"] == "ok" for r in results):
-        log.warning(f"  [{tool}] No files downloaded. Place .fa/.fasta files manually in {out_dir}")
-        results.append({
-            "tool": tool, "file": "", "url": base_url, "status": "skipped",
-            "note": f"Manual download needed — place .fa/.fasta files in {out_dir}",
-        })
+        log.warning(
+            f"  [{tool}] No files downloaded. Place .fa/.fasta files manually in {out_dir}"
+        )
+        results.append(
+            {
+                "tool": tool,
+                "file": "",
+                "url": base_url,
+                "status": "skipped",
+                "note": f"Manual download needed — place .fa/.fasta files in {out_dir}",
+            }
+        )
 
     return results
 
@@ -634,17 +723,25 @@ def _download_web(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
     url = cfg["url"]
     note = cfg.get("note", "")
     log.warning(
-        f"  [{tool}] Strategy 'web': attempting {url}\n"
-        f"  If this fails, {note}"
+        f"  [{tool}] Strategy 'web': attempting {url}\n" f"  If this fails, {note}"
     )
     resp = _get(url)
     if resp is None:
         log.warning(f"  [{tool}] Could not access {url}. MANUAL DOWNLOAD REQUIRED.")
-        manual_note = note if note else (
-            f"Please download manually and place .fa/.fasta files in {out_dir}"
+        manual_note = (
+            note
+            if note
+            else (f"Please download manually and place .fa/.fasta files in {out_dir}")
         )
-        return [{"tool": tool, "file": "", "url": url, "status": "manual_required",
-                 "note": manual_note}]
+        return [
+            {
+                "tool": tool,
+                "file": "",
+                "url": url,
+                "status": "manual_required",
+                "note": manual_note,
+            }
+        ]
 
     # If we got a response, check if it's a FASTA (Content-Type or content check)
     content_type = resp.headers.get("Content-Type", "")
@@ -654,8 +751,15 @@ def _download_web(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
             f"  [{tool}] {url} returned HTML (portal page). MANUAL DOWNLOAD REQUIRED.\n"
             f"  {note}"
         )
-        return [{"tool": tool, "file": "", "url": url, "status": "manual_required",
-                 "note": note}]
+        return [
+            {
+                "tool": tool,
+                "file": "",
+                "url": url,
+                "status": "manual_required",
+                "note": note,
+            }
+        ]
 
     # Looks like a direct file
     name = _safe_filename(url, f"{tool}_download.fa")
@@ -668,12 +772,12 @@ def _download_web(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
 # ── Dispatch ────────────────────────────────────────────────
 
 STRATEGY_FUNCS = {
-    "github":      _download_github,
+    "github": _download_github,
     "direct_list": _download_direct_list,
     "sourceforge": _download_sourceforge,
-    "osf":         _download_osf,
-    "readme_dir":  _download_readme_dir,
-    "web":         _download_web,
+    "osf": _download_osf,
+    "readme_dir": _download_readme_dir,
+    "web": _download_web,
 }
 
 
@@ -698,14 +802,24 @@ for tool_name, cfg in tools_cfg.items():
     func = STRATEGY_FUNCS.get(strategy)
     if func is None:
         log.warning(f"[{tool_name}] Unknown strategy '{strategy}' — skipping")
-        manifest.append({"tool": tool_name, "file": "", "url": "", "status": "unknown_strategy"})
+        manifest.append(
+            {"tool": tool_name, "file": "", "url": "", "status": "unknown_strategy"}
+        )
         continue
 
     try:
         results = func(tool_name, cfg, out_dir)
     except Exception as exc:
         log.error(f"[{tool_name}] Unexpected error: {exc}", exc_info=True)
-        results = [{"tool": tool_name, "file": "", "url": "", "status": "error", "note": str(exc)}]
+        results = [
+            {
+                "tool": tool_name,
+                "file": "",
+                "url": "",
+                "status": "error",
+                "note": str(exc),
+            }
+        ]
 
     manifest.extend(results)
 
@@ -725,13 +839,15 @@ for tool_name, cfg in tools_cfg.items():
             resolved = fp.resolve()
             if resolved in existing_ok_files:
                 continue
-            manifest.append({
-                "tool": tool_name,
-                "file": str(fp),
-                "url": "",
-                "status": "ok",
-                "note": "local_file_detected",
-            })
+            manifest.append(
+                {
+                    "tool": tool_name,
+                    "file": str(fp),
+                    "url": "",
+                    "status": "ok",
+                    "note": "local_file_detected",
+                }
+            )
             added_local_ok += 1
 
         if added_local_ok:
@@ -754,14 +870,18 @@ for tool_name, cfg in tools_cfg.items():
             f"check the path, extensions, or repository name in config/tool_sources.yaml "
             f"for '{tool_name}'."
         )
-        manifest.append({
-            "tool": tool_name, "file": "", "url": "",
-            "status": "config_error",
-            "note": (
-                f"No files matched for strategy='{strategy}'. "
-                "Review path/extensions in config/tool_sources.yaml."
-            ),
-        })
+        manifest.append(
+            {
+                "tool": tool_name,
+                "file": "",
+                "url": "",
+                "status": "config_error",
+                "note": (
+                    f"No files matched for strategy='{strategy}'. "
+                    "Review path/extensions in config/tool_sources.yaml."
+                ),
+            }
+        )
         manual_required.append(tool_name)
 
     if any(r["status"] == "manual_required" for r in results):
@@ -776,9 +896,9 @@ with open(out_manifest, "w") as fh:
 log.info("=" * 60)
 log.info(f"Download manifest written to: {out_manifest}")
 
-ok_total     = sum(1 for r in manifest if r["status"] == "ok")
-fail_total   = sum(1 for r in manifest if r["status"] == "failed")
-skip_total   = sum(1 for r in manifest if r["status"] in ("skipped", "manual_required"))
+ok_total = sum(1 for r in manifest if r["status"] == "ok")
+fail_total = sum(1 for r in manifest if r["status"] == "failed")
+skip_total = sum(1 for r in manifest if r["status"] in ("skipped", "manual_required"))
 config_total = sum(1 for r in manifest if r["status"] == "config_error")
 
 log.info(f"  Downloaded OK      : {ok_total}")
@@ -793,7 +913,7 @@ if manual_required:
     for t in manual_required:
         note = next(
             (r.get("note", "") for r in manifest if r["tool"] == t and r.get("note")),
-            ""
+            "",
         )
         log.warning(f"  {t}: {note}")
     log.warning(

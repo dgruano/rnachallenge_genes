@@ -74,17 +74,24 @@ class TestDownloadAssembliesIntegration:
             cache_dir.mkdir()
 
             # Create input with mixed accessions
-            df = pd.DataFrame({
-                "transcript_id": ["TX1", "TX2", "TX3", "TX4"],
-                "assembly_accession": [
-                    "GCF_000001405.40",  # NCBI assembly
-                    "GRCh38",             # GRC name
-                    "NC_000001.11",       # Sequence accession
-                    "hg38",               # UCSC name
-                ],
-                "organism": ["homo sapiens", "homo sapiens", "homo sapiens", "homo sapiens"],
-                "db_source": ["ncbi", "ensembl", "ncbi", "ucsc"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1", "TX2", "TX3", "TX4"],
+                    "assembly_accession": [
+                        "GCF_000001405.40",  # NCBI assembly
+                        "GRCh38",  # GRC name
+                        "NC_000001.11",  # Sequence accession
+                        "hg38",  # UCSC name
+                    ],
+                    "organism": [
+                        "homo sapiens",
+                        "homo sapiens",
+                        "homo sapiens",
+                        "homo sapiens",
+                    ],
+                    "db_source": ["ncbi", "ensembl", "ncbi", "ucsc"],
+                }
+            )
 
             input_file = tmpdir / "resolved.tsv"
             df.to_csv(input_file, sep="\t", index=False)
@@ -99,9 +106,7 @@ class TestDownloadAssembliesIntegration:
             downloaded = []
             unresolved = []
 
-            from tests.test_download_assemblies_phase4 import (
-                is_ncbi_assembly_accession,
-            )
+            from tests.test_download_assemblies_phase4 import is_ncbi_assembly_accession
 
             for _, row in unique_asm.iterrows():
                 acc = str(row["assembly_accession"]).strip()
@@ -120,12 +125,14 @@ class TestDownloadAssembliesIntegration:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1", "TX2"],
-                "assembly_accession": ["GCF_000001405.40", "GRCh38"],
-                "organism": ["homo sapiens", "homo sapiens"],
-                "db_source": ["ncbi", "ensembl"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1", "TX2"],
+                    "assembly_accession": ["GCF_000001405.40", "GRCh38"],
+                    "organism": ["homo sapiens", "homo sapiens"],
+                    "db_source": ["ncbi", "ensembl"],
+                }
+            )
 
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
@@ -137,8 +144,7 @@ class TestDownloadAssembliesIntegration:
             # Verify unresolved has reason column
             assert "reason" in unresolved.columns
             assert (
-                unresolved.iloc[0]["reason"]
-                == "not_resolvable_by_download_assemblies"
+                unresolved.iloc[0]["reason"] == "not_resolvable_by_download_assemblies"
             )
 
     def test_cache_existence_prevents_redownload(self):
@@ -153,12 +159,14 @@ class TestDownloadAssembliesIntegration:
             (asm_dir / "genome.fasta").touch()
             (asm_dir / "genome.fasta.fai").touch()
 
-            df = pd.DataFrame({
-                "transcript_id": ["TX1"],
-                "assembly_accession": ["GCF_000001405.40"],
-                "organism": ["homo sapiens"],
-                "db_source": ["ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1"],
+                    "assembly_accession": ["GCF_000001405.40"],
+                    "organism": ["homo sapiens"],
+                    "db_source": ["ncbi"],
+                }
+            )
 
             downloaded, unresolved = split_assemblies(df, cache_dir)
 

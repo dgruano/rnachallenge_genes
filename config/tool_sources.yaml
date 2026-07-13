@@ -100,7 +100,7 @@ tools:
     branch: master
     path: data/test
     extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz", ".txt"]
-  
+
   LncADeep:
     strategy: github
     owner: cyang235

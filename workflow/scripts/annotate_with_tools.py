@@ -13,7 +13,6 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
 
-
 log = get_logger("annotate_with_tools", snakemake.log[0])
 
 in_records = snakemake.input.records

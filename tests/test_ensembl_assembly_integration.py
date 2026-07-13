@@ -19,10 +19,10 @@ sys.path.insert(0, str(SCRIPT_DIR))
 # Import functions from the test module
 from test_ensembl_assembly import (
     ASSEMBLY_NAME_MAPPING,
-    normalize_build_name,
+    filter_and_resolve_ensembl,
     is_grc_assembly_accession,
     map_grc_to_gcf,
-    filter_and_resolve_ensembl,
+    normalize_build_name,
 )
 
 
@@ -39,28 +39,30 @@ class TestScriptIntegration:
         """Test reading and writing TSV files with expected schema."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            
+
             # Create input file
-            df_input = pd.DataFrame({
-                "transcript_id": ["TX1", "TX2", "TX3"],
-                "db_source": ["ensembl", "ensembl", "ensembl"],
-                "assembly_accession": ["GRCh38", "GCF_000001405.40", "GRCz11"],
-                "organism": ["homo sapiens", "homo sapiens", "danio rerio"],
-                "gene_id": ["G1", "G2", "G3"],
-                "gene_symbol": ["GENE1", "GENE2", "GENE3"],
-                "chrom": ["1", "1", "1"],
-                "start": [100, 100, 100],
-                "end": [200, 200, 200],
-                "strand": ["+", "+", "+"],
-                "is_ambiguous": [False, False, False],
-            })
-            
+            df_input = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1", "TX2", "TX3"],
+                    "db_source": ["ensembl", "ensembl", "ensembl"],
+                    "assembly_accession": ["GRCh38", "GCF_000001405.40", "GRCz11"],
+                    "organism": ["homo sapiens", "homo sapiens", "danio rerio"],
+                    "gene_id": ["G1", "G2", "G3"],
+                    "gene_symbol": ["GENE1", "GENE2", "GENE3"],
+                    "chrom": ["1", "1", "1"],
+                    "start": [100, 100, 100],
+                    "end": [200, 200, 200],
+                    "strand": ["+", "+", "+"],
+                    "is_ambiguous": [False, False, False],
+                }
+            )
+
             input_file = tmpdir / "input.tsv"
             df_input.to_csv(input_file, sep="\t", index=False)
-            
+
             # Process through test functions
             resolved, unresolved = filter_and_resolve_ensembl(df_input)
-            
+
             # Write outputs
             resolved_file = tmpdir / "resolved.tsv"
             unresolved_file = tmpdir / "unresolved.tsv"
@@ -73,7 +75,7 @@ class TestScriptIntegration:
                 )
             else:
                 unresolved.to_csv(unresolved_file, sep="\t", index=False)
-            
+
             # Read back and verify
             df_resolved = pd.read_csv(resolved_file, sep="\t")
             df_unresolved = pd.read_csv(unresolved_file, sep="\t")
@@ -85,22 +87,24 @@ class TestScriptIntegration:
 
     def test_mixed_input_output(self):
         """Test mixed resolvable/unresolvable rows."""
-        df_input = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2", "TX3"],
-            "db_source": ["ensembl", "ensembl", "ensembl"],
-            "assembly_accession": ["GRCh38", "GRCX99", "GCF_000001405.40"],
-            "organism": ["homo sapiens", "unknown", "homo sapiens"],
-            "gene_id": ["G1", "G2", "G3"],
-            "gene_symbol": ["GENE1", "GENE2", "GENE3"],
-            "chrom": ["1", "1", "1"],
-            "start": [100, 100, 100],
-            "end": [200, 200, 200],
-            "strand": ["+", "+", "+"],
-            "is_ambiguous": [False, False, False],
-        })
-        
+        df_input = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2", "TX3"],
+                "db_source": ["ensembl", "ensembl", "ensembl"],
+                "assembly_accession": ["GRCh38", "GRCX99", "GCF_000001405.40"],
+                "organism": ["homo sapiens", "unknown", "homo sapiens"],
+                "gene_id": ["G1", "G2", "G3"],
+                "gene_symbol": ["GENE1", "GENE2", "GENE3"],
+                "chrom": ["1", "1", "1"],
+                "start": [100, 100, 100],
+                "end": [200, 200, 200],
+                "strand": ["+", "+", "+"],
+                "is_ambiguous": [False, False, False],
+            }
+        )
+
         resolved, unresolved = filter_and_resolve_ensembl(df_input)
-        
+
         # GRCh38 and GCF_ should resolve; GRCX99 should not
         assert len(resolved) == 2
         assert len(unresolved) == 1
@@ -109,22 +113,24 @@ class TestScriptIntegration:
 
     def test_case_insensitive_mapping(self):
         """Test that GRC* detection and mapping is case-insensitive."""
-        df_input = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["ensembl"],
-            "assembly_accession": ["grch38"],  # lowercase
-            "organism": ["homo sapiens"],
-            "gene_id": ["G1"],
-            "gene_symbol": ["GENE1"],
-            "chrom": ["1"],
-            "start": [100],
-            "end": [200],
-            "strand": ["+"],
-            "is_ambiguous": [False],
-        })
-        
+        df_input = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["ensembl"],
+                "assembly_accession": ["grch38"],  # lowercase
+                "organism": ["homo sapiens"],
+                "gene_id": ["G1"],
+                "gene_symbol": ["GENE1"],
+                "chrom": ["1"],
+                "start": [100],
+                "end": [200],
+                "strand": ["+"],
+                "is_ambiguous": [False],
+            }
+        )
+
         resolved, unresolved = filter_and_resolve_ensembl(df_input)
-        
+
         assert len(resolved) == 1
         assert resolved.iloc[0]["assembly_accession"] == "GCF_000001405.40"
 

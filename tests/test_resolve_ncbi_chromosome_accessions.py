@@ -21,10 +21,18 @@ from resolve_ncbi_chromosome_accessions import (
     resolve_chromosomal_rows,
 )
 
-
 SAMPLE_COLS = [
-    "transcript_id", "db_source", "gene_id", "gene_symbol", "organism",
-    "assembly_accession", "chrom", "start", "end", "strand", "is_ambiguous",
+    "transcript_id",
+    "db_source",
+    "gene_id",
+    "gene_symbol",
+    "organism",
+    "assembly_accession",
+    "chrom",
+    "start",
+    "end",
+    "strand",
+    "is_ambiguous",
 ]
 
 
@@ -66,10 +74,15 @@ class TestIsChromosomalAccession:
 class TestResolveChromosomalRows:
 
     def test_nc_row_replaced_with_gcf(self):
-        df = _make_df([
-            {"transcript_id": "NM_001.1", "db_source": "ncbi",
-             "assembly_accession": "NC_000001.11"},
-        ])
+        df = _make_df(
+            [
+                {
+                    "transcript_id": "NM_001.1",
+                    "db_source": "ncbi",
+                    "assembly_accession": "NC_000001.11",
+                },
+            ]
+        )
         mapping = {"NC_000001.11": "GCF_000001405.40"}
         resolved, unresolved = resolve_chromosomal_rows(df, mapping)
         assert len(resolved) == 1
@@ -77,10 +90,15 @@ class TestResolveChromosomalRows:
         assert len(unresolved) == 0
 
     def test_unmapped_nc_goes_to_unresolved(self):
-        df = _make_df([
-            {"transcript_id": "NM_001.1", "db_source": "ncbi",
-             "assembly_accession": "NT_033779.5"},
-        ])
+        df = _make_df(
+            [
+                {
+                    "transcript_id": "NM_001.1",
+                    "db_source": "ncbi",
+                    "assembly_accession": "NT_033779.5",
+                },
+            ]
+        )
         mapping = {"NT_033779.5": None}
         resolved, unresolved = resolve_chromosomal_rows(df, mapping)
         assert len(resolved) == 0
@@ -88,24 +106,31 @@ class TestResolveChromosomalRows:
         assert unresolved.iloc[0]["reason"] == "chromosomal_mapping_failed:NT_033779.5"
 
     def test_gcf_rows_pass_through_unchanged(self):
-        df = _make_df([
-            {"transcript_id": "TX1", "db_source": "ncbi",
-             "assembly_accession": "GCF_000001405.40"},
-        ])
+        df = _make_df(
+            [
+                {
+                    "transcript_id": "TX1",
+                    "db_source": "ncbi",
+                    "assembly_accession": "GCF_000001405.40",
+                },
+            ]
+        )
         resolved, unresolved = resolve_chromosomal_rows(df, mapping={})
         assert len(resolved) == 1
         assert resolved.iloc[0]["assembly_accession"] == "GCF_000001405.40"
         assert len(unresolved) == 0
 
     def test_mixed_df_routes_correctly(self):
-        df = _make_df([
-            {"transcript_id": "TX1", "assembly_accession": "GCF_000001405.40"},
-            {"transcript_id": "TX2", "assembly_accession": "NC_000001.11"},
-            {"transcript_id": "TX3", "assembly_accession": "NT_033779.5"},
-        ])
+        df = _make_df(
+            [
+                {"transcript_id": "TX1", "assembly_accession": "GCF_000001405.40"},
+                {"transcript_id": "TX2", "assembly_accession": "NC_000001.11"},
+                {"transcript_id": "TX3", "assembly_accession": "NT_033779.5"},
+            ]
+        )
         mapping = {"NC_000001.11": "GCF_000001405.40", "NT_033779.5": None}
         resolved, unresolved = resolve_chromosomal_rows(df, mapping)
-        assert len(resolved) == 2   # GCF_ passthrough + NC_ mapped
+        assert len(resolved) == 2  # GCF_ passthrough + NC_ mapped
         assert len(unresolved) == 1  # NT_ unmapped
         gcf_vals = set(resolved["assembly_accession"])
         assert gcf_vals == {"GCF_000001405.40"}

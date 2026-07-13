@@ -87,7 +87,15 @@ if not _is_snakemake:
             raise IndexError(f"Output index {idx} out of range")
 
     class _Snakemake:
-        def __init__(self, classified, gff_files, output_resolved, output_unresolved, config_path, log_path):
+        def __init__(
+            self,
+            classified,
+            gff_files,
+            output_resolved,
+            output_unresolved,
+            config_path,
+            log_path,
+        ):
             self.input = _Input(classified, gff_files)
             self.output = _Output(output_resolved, output_unresolved)
             self.log = [log_path] if log_path else ["/dev/null"]
@@ -127,7 +135,10 @@ def _phytozome_sources(cfg: dict) -> Dict[str, dict]:
         key: value
         for key, value in cfg.items()
         if isinstance(value, dict)
-        and any(field in value for field in ("species_query", "genome_id", "gtf", "phytozome_version"))
+        and any(
+            field in value
+            for field in ("species_query", "genome_id", "gtf", "phytozome_version")
+        )
     }
 
 
@@ -219,18 +230,18 @@ classified_df = pd.read_csv(input_tsv, sep="\t", low_memory=False)
 
 configured_species = set(GTF_SOURCES)
 df = classified_df[
-    (
-        classified_df["db_source"].astype(str).isin(["plant", "phytozome"])
-    )
-    & (
-        classified_df["species_hint"].astype(str).isin(configured_species)
-    )
+    (classified_df["db_source"].astype(str).isin(["plant", "phytozome"]))
+    & (classified_df["species_hint"].astype(str).isin(configured_species))
 ].copy()
 
 if df.empty:
-    fallback_df = classified_df[classified_df["db_source"].astype(str).isin(["plant", "phytozome"])].copy()
+    fallback_df = classified_df[
+        classified_df["db_source"].astype(str).isin(["plant", "phytozome"])
+    ].copy()
     fallback_df["inferred_species"] = fallback_df.apply(infer_species, axis=1)
-    df = fallback_df[fallback_df["inferred_species"].astype(str).isin(configured_species)].copy()
+    df = fallback_df[
+        fallback_df["inferred_species"].astype(str).isin(configured_species)
+    ].copy()
 else:
     df["inferred_species"] = df.apply(infer_species, axis=1)
 
@@ -311,7 +322,9 @@ for _, row in df.iterrows():
             "gene_symbol": hit.get("gene_symbol", "") or hit.get("gene_id", ""),
             "organism": species,
             "assembly_accession": "Phytozome",
-            "assembly_name": src_meta.get("assembly_name", src_meta.get("assembly", "")),
+            "assembly_name": src_meta.get(
+                "assembly_name", src_meta.get("assembly", "")
+            ),
             "chrom": hit.get("chrom", ""),
             "start": hit.get("start", ""),
             "end": hit.get("end", ""),

@@ -181,19 +181,23 @@ def ncbi_fasta_url(accession: str) -> Optional[str]:
                     )
                     return None
             except Exception as exc:
-                log.warning(f"  FTP directory listing fallback failed for {accession}: {exc}")
+                log.warning(
+                    f"  FTP directory listing fallback failed for {accession}: {exc}"
+                )
                 return None
         report = reports[0]
         asm_name = report.get("assembly_info", {}).get("assembly_name", "")
         if not asm_name:
             return None
-        asm_name = unquote(asm_name).replace(" ", "_")  # decode %20 etc., then normalise spaces
+        asm_name = unquote(asm_name).replace(
+            " ", "_"
+        )  # decode %20 etc., then normalise spaces
 
         # Build FTP URL from accession pattern
         # GCF_000001405.40 → GCF/000/001/405/GCF_000001405.40_GRCh38.p14/
         acc_no_version = accession.split(".")[0]
         prefix = acc_no_version[0:3]  # GCF or GCA
-        digits = acc_no_version[4:]   # 000001405
+        digits = acc_no_version[4:]  # 000001405
         d1, d2, d3 = digits[0:3], digits[3:6], digits[6:9]
         full_name = f"{accession}_{asm_name}"
         url = (
@@ -238,8 +242,8 @@ def ensure_assembly(accession: str) -> bool:
     # Decompress FASTA
     try:
         log.info(f"  [{label}] Decompressing {fasta_gz} → {fasta}")
-        with gzip.open(fasta_gz, 'rb') as f_in:
-            with open(fasta, 'wb') as f_out:
+        with gzip.open(fasta_gz, "rb") as f_in:
+            with open(fasta, "wb") as f_out:
                 shutil.copyfileobj(f_in, f_out)
         log.debug(f"  [{label}] Decompression complete")
     except Exception as exc:
