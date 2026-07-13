@@ -60,6 +60,7 @@ include: "workflow/rules/merge_resolved.smk"             # unify all three DB st
 include: "workflow/rules/resolve_ncbi_chromosome_accessions.smk"  # Map NC_/NT_/NW_ → GCF_/GCA_ post-merge
 include: "workflow/rules/download_assemblies.smk"        # checkpoint: cache genome FASTAs
 include: "workflow/rules/extract_sequences.smk"
+include: "workflow/rules/annotate_with_tools.smk"
 include: "workflow/rules/report.smk"
 
 # ── Test rules (optional; not part of main pipeline) ───────
@@ -72,6 +73,8 @@ rule all:
         tool_map      = f"{RESULTS}/tool_source_map.tsv",
         tool_stats    = f"{RESULTS}/tool_source_stats.tsv",
         tool_unmatched = f"{RESULTS}/tool_source_unmatched.tsv",
+        pattern_unmatched_with_tools = f"{RESULTS}/pattern_unmatched_with_tools.tsv",
+        matched_not_found_with_tools = f"{RESULTS}/matched_not_found_with_tools.tsv",
         # Main pipeline outputs
         fasta    = f"{RESULTS}/output.fasta",
         bed      = f"{RESULTS}/output.bed",
