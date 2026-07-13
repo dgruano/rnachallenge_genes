@@ -31,6 +31,40 @@ _BATCH_SIZE = 50
 _RATE_LIMIT_DELAY = 0.02
 NCBI_FTP_ALL_BASE = "https://ftp.ncbi.nlm.nih.gov/genomes/all"
 
+# Legacy RefSeq chromosome accessions whose GenBank records carry no
+# ``Assembly:`` dbxref and whose nuccore→assembly elink is empty, so the
+# efetch-based mapping in resolve_ncbi_assembly_accessions returns None.
+# ROI strategy #5: map them statically to the assembly they belong to.
+#
+# Rice (Oryza sativa Japonica) "Build 4.0" == GCF_000005425.2. The input
+# coordinates were computed against these very chromosome sequences, so this
+# is the correct assembly to slice from (no version/coordinate drift) — the
+# assembly report lists Assigned-Molecule "1".."12"/"MT"/"Pltd", which the
+# chrom-translation step already uses to map the friendly chrom back to the
+# NC_ accession. Verified against the Build 4.0 assembly_report.txt.
+NC_TO_ASSEMBLY_EXCEPTIONS = {
+    "NC_008394.4": "GCF_000005425.2",  # chromosome 1
+    "NC_008395.2": "GCF_000005425.2",  # chromosome 2
+    "NC_008396.2": "GCF_000005425.2",  # chromosome 3
+    "NC_008397.2": "GCF_000005425.2",  # chromosome 4
+    "NC_008398.2": "GCF_000005425.2",  # chromosome 5
+    "NC_008399.2": "GCF_000005425.2",  # chromosome 6
+    "NC_008400.2": "GCF_000005425.2",  # chromosome 7
+    "NC_008401.2": "GCF_000005425.2",  # chromosome 8
+    "NC_008402.2": "GCF_000005425.2",  # chromosome 9
+    "NC_008403.2": "GCF_000005425.2",  # chromosome 10
+    "NC_008404.2": "GCF_000005425.2",  # chromosome 11
+    "NC_008405.2": "GCF_000005425.2",  # chromosome 12
+    "NC_011033.1": "GCF_000005425.2",  # mitochondrion
+    "NC_001320.1": "GCF_000005425.2",  # chloroplast (Pltd)
+    "NC_001751.1": "GCF_000005425.2",  # B1 mitochondrial plasmid
+}
+
+
+def assembly_from_exceptions(genomic_acc: str) -> Optional[str]:
+    """Return the GCF_/GCA_ assembly for a known legacy accession, else None."""
+    return NC_TO_ASSEMBLY_EXCEPTIONS.get(genomic_acc)
+
 
 def ncbi_ftp_species_dir(accession: str, ftp_base: str = NCBI_FTP_ALL_BASE) -> str:
     """Parent FTP directory holding an accession's assembly folders.

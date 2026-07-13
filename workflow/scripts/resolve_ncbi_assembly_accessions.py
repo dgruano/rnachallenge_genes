@@ -44,6 +44,7 @@ from logging_utils import get_logger
 from ncbi_assembly_utils import (
     set_entrez_credentials,
     resolve_assembly_ftp,
+    assembly_from_exceptions,
 )
 
 # ── Snakemake interface ──────────────────────────────────────────────────────
@@ -99,14 +100,19 @@ def map_genomic_to_assembly(accessions: list[str]) -> dict[str, Optional[str]]:
 
     Returns: {genomic_accession: assembly_accession or None}
     """
-    results: dict[str, Optional[str]] = {acc: None for acc in accessions}
-    total = len(accessions)
+    # Static exception map first (ROI #5): legacy accessions with no Assembly
+    # dbxref that efetch/elink cannot resolve. These skip the network entirely.
+    results: dict[str, Optional[str]] = {acc: assembly_from_exceptions(acc) for acc in accessions}
+    to_fetch = [acc for acc in accessions if results[acc] is None]
+    recovered = len(accessions) - len(to_fetch)
+    if recovered:
+        log.info(f"Resolved {recovered} accession(s) via static exception map")
 
-    log.info(f"Mapping {total} genomic accession(s) to parent assemblies")
+    log.info(f"Mapping {len(to_fetch)} genomic accession(s) to parent assemblies via efetch")
 
-    for batch_start in range(0, len(accessions), EFETCH_BATCH_SIZE):
-        batch = accessions[batch_start : batch_start + EFETCH_BATCH_SIZE]
-        batch_end = min(batch_start + EFETCH_BATCH_SIZE, len(accessions))
+    for batch_start in range(0, len(to_fetch), EFETCH_BATCH_SIZE):
+        batch = to_fetch[batch_start : batch_start + EFETCH_BATCH_SIZE]
+        batch_end = min(batch_start + EFETCH_BATCH_SIZE, len(to_fetch))
 
         log.info(f"  Batch {batch_start // EFETCH_BATCH_SIZE + 1}: fetching {len(batch)} accessions…")
 
