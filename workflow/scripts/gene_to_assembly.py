@@ -22,10 +22,10 @@ Usage:
 """
 
 import argparse
-import re
-import time
-import sys
 import csv
+import re
+import sys
+import time
 import xml.etree.ElementTree as ET
 
 try:
@@ -36,26 +36,34 @@ except ImportError:
 
 
 CHUNK_SIZE = 200
-RATE_LIMIT_DELAY     = 0.34   # ~3 req/sec without API key
-RATE_LIMIT_DELAY_KEY = 0.11   # ~10 req/sec with API key
+RATE_LIMIT_DELAY = 0.34  # ~3 req/sec without API key
+RATE_LIMIT_DELAY_KEY = 0.11  # ~10 req/sec with API key
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Retrieve assembly accessions and XM transcripts from NCBI Gene IDs."
     )
     input_group = parser.add_mutually_exclusive_group(required=True)
-    input_group.add_argument("--ids",  nargs="+", metavar="GENE_ID",
-                              help="One or more NCBI Gene IDs (space-separated)")
-    input_group.add_argument("--file", metavar="FILE",
-                              help="Text file with one Gene ID per line")
-    parser.add_argument("--email",   required=True, help="Your email (required by NCBI)")
-    parser.add_argument("--api_key", default=None,  help="NCBI API key (optional)")
-    parser.add_argument("--output",  default=None,  help="Output TSV file (default: stdout)")
+    input_group.add_argument(
+        "--ids",
+        nargs="+",
+        metavar="GENE_ID",
+        help="One or more NCBI Gene IDs (space-separated)",
+    )
+    input_group.add_argument(
+        "--file", metavar="FILE", help="Text file with one Gene ID per line"
+    )
+    parser.add_argument("--email", required=True, help="Your email (required by NCBI)")
+    parser.add_argument("--api_key", default=None, help="NCBI API key (optional)")
+    parser.add_argument(
+        "--output", default=None, help="Output TSV file (default: stdout)"
+    )
     return parser.parse_args()
 
 
@@ -72,12 +80,13 @@ def load_gene_ids(args):
 
 def chunks(lst, n):
     for i in range(0, len(lst), n):
-        yield lst[i:i + n]
+        yield lst[i : i + n]
 
 
 # ---------------------------------------------------------------------------
 # XML parsing helpers
 # ---------------------------------------------------------------------------
+
 
 def parse_gene_xml(xml_text):
     """
@@ -105,12 +114,12 @@ def parse_gene_xml(xml_text):
     ns = {}  # no namespace in these records
 
     result = {
-        "gene_status":   "unknown",
-        "locus_tag":     "",
-        "scaffold_acc":  "",
-        "mrna_accs":     [],
-        "protein_accs":  [],
-        "update_date":   "",
+        "gene_status": "unknown",
+        "locus_tag": "",
+        "scaffold_acc": "",
+        "mrna_accs": [],
+        "protein_accs": [],
+        "update_date": "",
     }
 
     # Handle Entrezgene-Set wrapper (e.g., from direct efetch XML file)
@@ -170,7 +179,9 @@ def parse_gene_xml(xml_text):
                             mrna_acc = gc_mrna.find("Gene-commentary_accession")
                             mrna_ver = gc_mrna.find("Gene-commentary_version")
                             if mrna_acc is not None and mrna_acc.text:
-                                ver = f".{mrna_ver.text}" if mrna_ver is not None else ""
+                                ver = (
+                                    f".{mrna_ver.text}" if mrna_ver is not None else ""
+                                )
                                 result["mrna_accs"].append(f"{mrna_acc.text}{ver}")
 
                             # protein products of this mRNA
@@ -178,14 +189,27 @@ def parse_gene_xml(xml_text):
                             if prot_products is not None:
                                 for gc_prot in prot_products.findall("Gene-commentary"):
                                     prot_type = gc_prot.find("Gene-commentary_type")
-                                    if prot_type is not None and prot_type.get("value") == "8":
-                                        prot_acc = gc_prot.find("Gene-commentary_accession")
-                                        prot_ver = gc_prot.find("Gene-commentary_version")
+                                    if (
+                                        prot_type is not None
+                                        and prot_type.get("value") == "8"
+                                    ):
+                                        prot_acc = gc_prot.find(
+                                            "Gene-commentary_accession"
+                                        )
+                                        prot_ver = gc_prot.find(
+                                            "Gene-commentary_version"
+                                        )
                                         if prot_acc is not None and prot_acc.text:
-                                            ver = f".{prot_ver.text}" if prot_ver is not None else ""
-                                            result["protein_accs"].append(f"{prot_acc.text}{ver}")
+                                            ver = (
+                                                f".{prot_ver.text}"
+                                                if prot_ver is not None
+                                                else ""
+                                            )
+                                            result["protein_accs"].append(
+                                                f"{prot_acc.text}{ver}"
+                                            )
 
-    result["mrna_accs"]    = list(dict.fromkeys(result["mrna_accs"]))    # deduplicate
+    result["mrna_accs"] = list(dict.fromkeys(result["mrna_accs"]))  # deduplicate
     result["protein_accs"] = list(dict.fromkeys(result["protein_accs"]))
     return result
 
@@ -211,8 +235,9 @@ def fetch_assembly_accession_from_dblink(nuccore_uid, delay):
     Returns an accession string (e.g. 'GCF_000002655.1') or None.
     """
     try:
-        handle = Entrez.efetch(db="nuccore", id=nuccore_uid,
-                               rettype="gb", retmode="text")
+        handle = Entrez.efetch(
+            db="nuccore", id=nuccore_uid, rettype="gb", retmode="text"
+        )
         assembly_acc = None
         for line in handle:
             if line.startswith("FEATURES"):
@@ -300,48 +325,60 @@ def fetch_assembly_from_nuccore(scaffold_acc, delay):
 def resolve_assembly_uids(assembly_uids, delay):
     records = []
     try:
-        summary_handle = Entrez.esummary(
-            db="assembly", id=",".join(set(assembly_uids))
-        )
+        summary_handle = Entrez.esummary(db="assembly", id=",".join(set(assembly_uids)))
         summary_result = Entrez.read(summary_handle, validate=False)
         summary_handle.close()
         time.sleep(delay)
 
-        doc_summaries = (summary_result
-                         .get("DocumentSummarySet", {})
-                         .get("DocumentSummary", []))
+        doc_summaries = summary_result.get("DocumentSummarySet", {}).get(
+            "DocumentSummary", []
+        )
         for doc in doc_summaries:
-            records.append({
-                "assembly_accession": doc.get("AssemblyAccession", "N/A"),
-                "assembly_name":      doc.get("AssemblyName",      "N/A"),
-                "seq_release_date":   doc.get("SeqReleaseDate",    "N/A"),
-                "organism":           doc.get("Organism",          "N/A"),
-                "assembly_status":    doc.get("AssemblyStatus",    "N/A"),
-            })
+            records.append(
+                {
+                    "assembly_accession": doc.get("AssemblyAccession", "N/A"),
+                    "assembly_name": doc.get("AssemblyName", "N/A"),
+                    "seq_release_date": doc.get("SeqReleaseDate", "N/A"),
+                    "organism": doc.get("Organism", "N/A"),
+                    "assembly_status": doc.get("AssemblyStatus", "N/A"),
+                }
+            )
     except Exception as e:
-        records.append({"assembly_accession": f"ERROR: {e}",
-                        "assembly_name": "", "seq_release_date": "",
-                        "organism": "", "assembly_status": ""})
-    return records or [{"assembly_accession": "N/A", "assembly_name": "N/A",
-                         "seq_release_date": "N/A", "organism": "N/A",
-                         "assembly_status": "N/A"}]
+        records.append(
+            {
+                "assembly_accession": f"ERROR: {e}",
+                "assembly_name": "",
+                "seq_release_date": "",
+                "organism": "",
+                "assembly_status": "",
+            }
+        )
+    return records or [
+        {
+            "assembly_accession": "N/A",
+            "assembly_name": "N/A",
+            "seq_release_date": "N/A",
+            "organism": "N/A",
+            "assembly_status": "N/A",
+        }
+    ]
 
 
 def fetch_data_for_gene_id(gid, delay):
     """Fetch Gene XML + linked assembly for a single Gene ID."""
     row = {
-        "gene_id":           gid,
-        "gene_status":       "",
-        "locus_tag":         "",
-        "scaffold_acc":      "",
-        "mrna_accessions":   "",
-        "protein_accessions":"",
-        "gene_update_date":  "",
-        "assembly_accession":"",
-        "assembly_name":     "",
-        "seq_release_date":  "",
-        "organism":          "",
-        "assembly_status":   "",
+        "gene_id": gid,
+        "gene_status": "",
+        "locus_tag": "",
+        "scaffold_acc": "",
+        "mrna_accessions": "",
+        "protein_accessions": "",
+        "gene_update_date": "",
+        "assembly_accession": "",
+        "assembly_name": "",
+        "seq_release_date": "",
+        "organism": "",
+        "assembly_status": "",
     }
 
     # 1. Fetch Gene XML to extract transcript accessions
@@ -352,12 +389,12 @@ def fetch_data_for_gene_id(gid, delay):
         time.sleep(delay)
 
         gene_info = parse_gene_xml(xml_text)
-        row["gene_status"]        = gene_info.get("gene_status", "")
-        row["locus_tag"]          = gene_info.get("locus_tag", "")
-        row["scaffold_acc"]       = gene_info.get("scaffold_acc", "")
-        row["mrna_accessions"]    = ";".join(gene_info.get("mrna_accs", []))
+        row["gene_status"] = gene_info.get("gene_status", "")
+        row["locus_tag"] = gene_info.get("locus_tag", "")
+        row["scaffold_acc"] = gene_info.get("scaffold_acc", "")
+        row["mrna_accessions"] = ";".join(gene_info.get("mrna_accs", []))
         row["protein_accessions"] = ";".join(gene_info.get("protein_accs", []))
-        row["gene_update_date"]   = gene_info.get("update_date", "")
+        row["gene_update_date"] = gene_info.get("update_date", "")
     except Exception as e:
         row["mrna_accessions"] = f"XML_ERROR: {e}"
 
@@ -378,21 +415,23 @@ def fetch_data_for_gene_id(gid, delay):
             # Keep the first (there is usually one reference assembly per gene)
             asm = asm_records[0]
             row["assembly_accession"] = asm["assembly_accession"]
-            row["assembly_name"]      = asm["assembly_name"]
-            row["seq_release_date"]   = asm["seq_release_date"]
-            row["organism"]           = asm["organism"]
-            row["assembly_status"]    = asm["assembly_status"]
+            row["assembly_name"] = asm["assembly_name"]
+            row["seq_release_date"] = asm["seq_release_date"]
+            row["organism"] = asm["organism"]
+            row["assembly_status"] = asm["assembly_status"]
         else:
             # Fallback: if no elink result but we have scaffold accession,
             # use nuccore → assembly to find the historical assembly
             if row["scaffold_acc"]:
                 nuccore_asm = fetch_assembly_from_nuccore(row["scaffold_acc"], delay)
                 if nuccore_asm and "error" not in nuccore_asm:
-                    row["assembly_accession"] = nuccore_asm.get("assembly_accession", "N/A")
-                    row["assembly_name"]      = nuccore_asm.get("assembly_name", "N/A")
-                    row["seq_release_date"]   = nuccore_asm.get("seq_release_date", "N/A")
-                    row["organism"]           = nuccore_asm.get("organism", "N/A")
-                    row["assembly_status"]    = nuccore_asm.get("assembly_status", "N/A")
+                    row["assembly_accession"] = nuccore_asm.get(
+                        "assembly_accession", "N/A"
+                    )
+                    row["assembly_name"] = nuccore_asm.get("assembly_name", "N/A")
+                    row["seq_release_date"] = nuccore_asm.get("seq_release_date", "N/A")
+                    row["organism"] = nuccore_asm.get("organism", "N/A")
+                    row["assembly_status"] = nuccore_asm.get("assembly_status", "N/A")
                 else:
                     row["assembly_accession"] = "N/A (no assembly link found)"
             else:
@@ -408,11 +447,18 @@ def fetch_data_for_gene_id(gid, delay):
 # ---------------------------------------------------------------------------
 
 FIELDNAMES = [
-    "gene_id", "gene_status", "locus_tag",
-    "scaffold_acc", "mrna_accessions", "protein_accessions",
+    "gene_id",
+    "gene_status",
+    "locus_tag",
+    "scaffold_acc",
+    "mrna_accessions",
+    "protein_accessions",
     "gene_update_date",
-    "assembly_accession", "assembly_name", "seq_release_date",
-    "organism", "assembly_status",
+    "assembly_accession",
+    "assembly_name",
+    "seq_release_date",
+    "organism",
+    "assembly_status",
 ]
 
 
@@ -434,6 +480,7 @@ def write_results(rows, output_path):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     args = parse_args()

@@ -10,11 +10,11 @@ RESOLVED_COLS = [
     "gene_id",
     "gene_symbol",
     "organism",
-    "assembly_name",       # human-readable id (R64-5-1, GRCh38, NC_000001.11…)
+    "assembly_name",  # human-readable id (R64-5-1, GRCh38, NC_000001.11…)
     "assembly_accession",  # GCF_/GCA_ if known at Stage 1; pd.NA otherwise
-    "fasta_url",           # HTTPS URL if in config; pd.NA otherwise
-    "gtf_url",             # HTTPS URL if in config; pd.NA otherwise
-    "gtf_format",          # "gtf" | "gff3" | pd.NA
+    "fasta_url",  # HTTPS URL if in config; pd.NA otherwise
+    "gtf_url",  # HTTPS URL if in config; pd.NA otherwise
+    "gtf_format",  # "gtf" | "gff3" | pd.NA
     "chrom",
     "start",
     "end",
@@ -82,8 +82,19 @@ def wormbase_candidates(tid: str) -> list[str]:
     return [c for c in dict.fromkeys(candidates) if c]
 
 
+_SGD_SOURCE_RE = re.compile(r"^Source:SGD;Acc:(S\d+)$", re.IGNORECASE)
+
+
 def yeast_candidates(tid: str) -> list[str]:
     candidates = [tid]
+
+    # ROI #6: canonicalize Source:SGD;Acc:S000028522 → the bare SGDID and its
+    # dbxref form (SGD:S000028522), the keys the GFF3 index exposes.
+    m = _SGD_SOURCE_RE.match(tid)
+    if m:
+        sgdid = m.group(1)
+        candidates.append(sgdid)
+        candidates.append(f"SGD:{sgdid}")
 
     stripped = re.sub(r"_[AB]$", "", tid)
     if stripped != tid:
@@ -132,11 +143,25 @@ def build_annotation_index(
                 continue
 
             attrs = parse_annotation_attrs(parts[8])
-            gene_id = next((attrs.get(field, "").strip() for field in gene_id_fields if attrs.get(field, "").strip()), "")
-            gene_symbol = next(
-                (attrs.get(field, "").strip() for field in gene_symbol_fields if attrs.get(field, "").strip()),
-                gene_id,
-            ) or gene_id
+            gene_id = next(
+                (
+                    attrs.get(field, "").strip()
+                    for field in gene_id_fields
+                    if attrs.get(field, "").strip()
+                ),
+                "",
+            )
+            gene_symbol = (
+                next(
+                    (
+                        attrs.get(field, "").strip()
+                        for field in gene_symbol_fields
+                        if attrs.get(field, "").strip()
+                    ),
+                    gene_id,
+                )
+                or gene_id
+            )
 
             record = {
                 "gene_id": gene_id,
@@ -148,7 +173,11 @@ def build_annotation_index(
             }
 
             keys = []
-            for field in tuple(transcript_fields) + tuple(gene_id_fields) + tuple(gene_symbol_fields):
+            for field in (
+                tuple(transcript_fields)
+                + tuple(gene_id_fields)
+                + tuple(gene_symbol_fields)
+            ):
                 value = attrs.get(field, "").strip()
                 if value:
                     keys.append(value)
@@ -189,7 +218,9 @@ def build_resolved_row(
         "gene_symbol": hit.get("gene_symbol", "") or hit.get("gene_id", ""),
         "organism": organism,
         "assembly_name": assembly_name,
-        "assembly_accession": assembly_accession if assembly_accession is not None else pd.NA,
+        "assembly_accession": (
+            assembly_accession if assembly_accession is not None else pd.NA
+        ),
         "fasta_url": fasta_url if fasta_url is not None else pd.NA,
         "gtf_url": gtf_url if gtf_url is not None else pd.NA,
         "gtf_format": gtf_format if gtf_format is not None else pd.NA,
@@ -226,7 +257,9 @@ def resolve_classified_ids(
     gtf_url=None,
     gtf_format=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    source_df = classified_df[classified_df["db_source"].astype(str) == db_source].copy()
+    source_df = classified_df[
+        classified_df["db_source"].astype(str) == db_source
+    ].copy()
     resolved_rows = []
     unresolved_rows = []
 

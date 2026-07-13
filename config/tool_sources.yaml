@@ -100,7 +100,7 @@ tools:
     branch: master
     path: data/test
     extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz", ".txt"]
-  
+
   LncADeep:
     strategy: github
     owner: cyang235
@@ -197,3 +197,18 @@ tools:
     branch: master
     path: rawdata
     extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz", ".txt"]
+
+  PreLnc:
+    strategy: github
+    owner: LeiCao97
+    repo: PreLncData
+    branch: master
+    paths:
+      - train
+      - test
+    extensions: [".fa", ".fasta", ".fa.gz", ".fasta.gz"]
+    note: >
+      PreLnc benchmark datasets from https://github.com/LeiCao97/PreLncData.
+      Includes train/test FASTA sets for human, mouse, cow, Arabidopsis,
+      Oryza sativa, and Zea mays with lncRNA (positive) and protein-coding
+      (negative) classes.

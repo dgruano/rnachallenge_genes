@@ -16,8 +16,8 @@ from utils.annotation_resolver import (
     RESOLVED_COLS,
     UNRESOLVED_COLS,
     build_annotation_index,
-    normalize_strand,
     generic_candidates,
+    normalize_strand,
     resolve_classified_ids,
 )
 
@@ -29,12 +29,12 @@ out_resolved = snakemake.output.resolved
 out_unresolved = snakemake.output.unresolved
 
 cfg = snakemake.config.get("metazoa_gtf_sources", {}).get("flybase", {})
-ASSEMBLY_NAME      = cfg.get("assembly_name", "BDGP6")
+ASSEMBLY_NAME = cfg.get("assembly_name", "BDGP6")
 ASSEMBLY_ACCESSION = cfg.get("assembly_accession")
-FASTA_URL          = cfg.get("fasta_url")
-GTF_URL            = cfg.get("url")
-GTF_FORMAT         = cfg.get("gtf_format", "gtf")
-ORGANISM           = cfg.get("organism", "drosophila_melanogaster")
+FASTA_URL = cfg.get("fasta_url")
+GTF_URL = cfg.get("url")
+GTF_FORMAT = cfg.get("gtf_format", "gtf")
+ORGANISM = cfg.get("organism", "drosophila_melanogaster")
 
 FLYBASE_COORD_RE = re.compile(
     r"chromosome:(?P<assembly>[^:]+):(?P<chrom>[^:]+):(?P<start>\d+):(?P<end>\d+):(?P<strand>[-+_]?1)"

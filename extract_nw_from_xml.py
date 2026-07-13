@@ -4,9 +4,10 @@ Extract NW_ genome accessions from local NCBI Gene XML files.
 Useful for testing or batch processing downloaded XML responses.
 """
 
-import sys
 import os
+import sys
 import xml.etree.ElementTree as ET
+
 
 def extract_nw_from_file(xml_file):
     """Extract NW_ accession, GeneID, and organism from an XML file."""
@@ -68,4 +69,6 @@ if __name__ == "__main__":
         if error:
             print(f"ERROR in {xml_file}: {error}", file=sys.stderr)
         else:
-            print(f"{result.get('gene_id', 'N/A')}\t{result.get('organism', 'N/A')}\t{result.get('nw_accession', 'N/A')}")
+            print(
+                f"{result.get('gene_id', 'N/A')}\t{result.get('organism', 'N/A')}\t{result.get('nw_accession', 'N/A')}"
+            )

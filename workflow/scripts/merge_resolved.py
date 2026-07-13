@@ -179,17 +179,17 @@ df_ncbi_assembly = safe_read(in_ncbi_assembly_res, "ncbi_assembly_resolved")
 df_ncbi_assembly_unres = safe_read(in_ncbi_assembly_unres, "ncbi_assembly_unresolved")
 df_ensembl = safe_read(in_ensembl_assembly_res, "ensembl_assembly_resolved")
 df_external = safe_read(in_external_res, "external_resolved")
-df_biomart    = safe_read(in_biomart_res,    "biomart_resolved")
-df_plant_gtf  = safe_read(in_plant_gtf_res,  "plant_gtf_resolved")
+df_biomart = safe_read(in_biomart_res, "biomart_resolved")
+df_plant_gtf = safe_read(in_plant_gtf_res, "plant_gtf_resolved")
 df_phytozome_gtf = safe_read(in_phytozome_gtf_res, "phytozome_gtf_resolved")
 df_phytozome_gtf_unres = safe_read(in_phytozome_gtf_unres, "phytozome_gtf_unresolved")
-df_worm_gtf   = safe_read(in_worm_gtf_res,   "worm_gtf_resolved")
+df_worm_gtf = safe_read(in_worm_gtf_res, "worm_gtf_resolved")
 df_worm_gtf_unres = safe_read(in_worm_gtf_unres, "worm_gtf_unresolved")
-df_fly_gtf    = safe_read(in_fly_gtf_res,    "fly_gtf_resolved")
+df_fly_gtf = safe_read(in_fly_gtf_res, "fly_gtf_resolved")
 df_fly_gtf_unres = safe_read(in_fly_gtf_unres, "fly_gtf_unresolved")
-df_yeast_gtf  = safe_read(in_yeast_gtf_res,  "yeast_gtf_resolved")
+df_yeast_gtf = safe_read(in_yeast_gtf_res, "yeast_gtf_resolved")
 df_yeast_gtf_unres = safe_read(in_yeast_gtf_unres, "yeast_gtf_unresolved")
-df_gramene    = safe_read(in_gramene_res,    "gramene_resolved")
+df_gramene = safe_read(in_gramene_res, "gramene_resolved")
 df_noncode = safe_read(in_noncode_res, "noncode_resolved")
 df_noncode_v4 = apply_ucsc_to_gcf_mapping(
     safe_read(in_noncode_v4_res, "noncode_v4_resolved")
@@ -240,13 +240,30 @@ df_abandoned = normalize_resolved_frame(df_abandoned, "abandoned_resolved")
 
 # ── Concatenate ───────────────────────────────────────────────
 df_all_resolved = pd.concat(
-    [df_ncbi_assembly, df_ensembl, df_external, df_biomart, df_plant_gtf, df_phytozome_gtf, df_worm_gtf, df_fly_gtf, df_yeast_gtf, df_gramene, df_noncode, df_noncode_v4, df_noncode_2016, df_abandoned],
+    [
+        df_ncbi_assembly,
+        df_ensembl,
+        df_external,
+        df_biomart,
+        df_plant_gtf,
+        df_phytozome_gtf,
+        df_worm_gtf,
+        df_fly_gtf,
+        df_yeast_gtf,
+        df_gramene,
+        df_noncode,
+        df_noncode_v4,
+        df_noncode_2016,
+        df_abandoned,
+    ],
     ignore_index=True,
 )
 
 coordless_not_found = pd.DataFrame(columns=["transcript_id", "db_source", "reason"])
 if not df_all_resolved.empty:
-    chrom_missing = df_all_resolved["chrom"].isna() | df_all_resolved["chrom"].astype("string").str.strip().eq("")
+    chrom_missing = df_all_resolved["chrom"].isna() | df_all_resolved["chrom"].astype(
+        "string"
+    ).str.strip().eq("")
     start_end_missing = df_all_resolved["start"].isna() & df_all_resolved["end"].isna()
     missing_coords = chrom_missing | start_end_missing
 
@@ -284,21 +301,30 @@ if not df_all_resolved.empty:
             .astype("string")
             .apply(build_cache_key_from_url)
         )
-        log.info(
-            f"Derived URL-based cache key for {int(needs_cache_key.sum())} row(s)"
-        )
+        log.info(f"Derived URL-based cache key for {int(needs_cache_key.sum())} row(s)")
 
 df_all_ambig = pd.concat([df_amb_na, df_amb_ens, df_amb_ext], ignore_index=True)
 df_pattern_unmatched = df_unknown.copy()
 
 # Normalize matched-not-found columns across resolvers
 normalized_not_found = []
-for frame in (df_ncbi_assembly_unres, df_ens_unres, df_gram_unres, df_phytozome_gtf_unres, df_worm_gtf_unres, df_fly_gtf_unres, df_yeast_gtf_unres, df_noncode_unres):
+for frame in (
+    df_ncbi_assembly_unres,
+    df_ens_unres,
+    df_gram_unres,
+    df_phytozome_gtf_unres,
+    df_worm_gtf_unres,
+    df_fly_gtf_unres,
+    df_yeast_gtf_unres,
+    df_noncode_unres,
+):
     if frame.empty:
         continue
     cols = set(frame.columns)
     if {"transcript_id", "db_source", "reason"}.issubset(cols):
-        normalized_not_found.append(frame[["transcript_id", "db_source", "reason"]].copy())
+        normalized_not_found.append(
+            frame[["transcript_id", "db_source", "reason"]].copy()
+        )
     elif {"transcript_id", "reason"}.issubset(cols):
         tmp = frame[["transcript_id", "reason"]].copy()
         tmp["db_source"] = "plant"
@@ -317,7 +343,9 @@ df_matched_not_found = (
     else pd.DataFrame(columns=["transcript_id", "db_source", "reason"])
 )
 
-df_all_unresolved = pd.concat([df_pattern_unmatched, df_matched_not_found], ignore_index=True)
+df_all_unresolved = pd.concat(
+    [df_pattern_unmatched, df_matched_not_found], ignore_index=True
+)
 
 # Sanity check: flag any duplicate transcript IDs (shouldn't happen but log if so)
 dupes = df_all_resolved[df_all_resolved.duplicated(subset="transcript_id", keep=False)]

@@ -118,14 +118,14 @@ log.info(
 # ── Normalise column names ────────────────────────────────────
 # BioMart REST TSV returns human-readable headers:
 col_map = {
-    "Transcript stable ID":         "base_transcript_id",
+    "Transcript stable ID": "base_transcript_id",
     "Transcript stable ID version": "versioned_transcript_id",
-    "Gene stable ID":               "gene_id",
-    "Gene name":                    "gene_symbol",
-    "Chromosome/scaffold name":     "chrom",
-    "Gene start (bp)":              "start",
-    "Gene end (bp)":                "end",
-    "Strand":                       "strand_raw",
+    "Gene stable ID": "gene_id",
+    "Gene name": "gene_symbol",
+    "Chromosome/scaffold name": "chrom",
+    "Gene start (bp)": "start",
+    "Gene end (bp)": "end",
+    "Strand": "strand_raw",
 }
 df_biomart = df_biomart.rename(
     columns={k: v for k, v in col_map.items() if k in df_biomart.columns}
@@ -239,7 +239,14 @@ for _, row in df_ensembl_ids.iterrows():
 df_resolved = pd.DataFrame(resolved_rows, columns=RESOLVED_COLS)
 df_ambig = pd.DataFrame(ambig_rows, columns=AMBIG_COLS)
 df_unresolved = pd.DataFrame(
-    [{"transcript_id": tid, "db_source": "ensembl", "reason": "not_found_in_ensembl_biomart"} for tid in missing],
+    [
+        {
+            "transcript_id": tid,
+            "db_source": "ensembl",
+            "reason": "not_found_in_ensembl_biomart",
+        }
+        for tid in missing
+    ],
     columns=UNRESOLVED_COLS,
 )
 

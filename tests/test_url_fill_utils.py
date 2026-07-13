@@ -8,7 +8,6 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from url_fill_utils import fill_urls_from_table
 
-
 FILL_COLS = ["assembly_accession", "fasta_url", "gtf_url", "gtf_format"]
 
 
@@ -37,7 +36,10 @@ def test_fill_urls_from_assembly_name_first():
     filled, count = fill_urls_from_table(df, url_table, fill_cols=FILL_COLS)
 
     assert count == 1
-    assert filled.loc[0, "fasta_url"] == "https://example.org/Arabidopsis_thaliana.TAIR10.fa.gz"
+    assert (
+        filled.loc[0, "fasta_url"]
+        == "https://example.org/Arabidopsis_thaliana.TAIR10.fa.gz"
+    )
     assert filled.loc[0, "assembly_accession"] == "GCF_000001735.4"
 
 
@@ -71,4 +73,6 @@ def test_fill_urls_falls_back_to_organism():
     )
 
     assert count == 1
-    assert filled.loc[0, "fasta_url"] == "https://example.org/Oryza_sativa.IRGSP-1.0.fa.gz"
+    assert (
+        filled.loc[0, "fasta_url"] == "https://example.org/Oryza_sativa.IRGSP-1.0.fa.gz"
+    )

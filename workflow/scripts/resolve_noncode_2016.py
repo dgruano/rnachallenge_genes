@@ -22,6 +22,7 @@ Outputs
 noncode_2016_resolved.tsv   — RESOLVED_COLS schema; chrom/start/end/strand NA
 noncode_2016_unresolved.tsv — transcript_id, raw_header, source_file, reason
 """
+
 import re
 import sys
 from pathlib import Path
@@ -34,10 +35,10 @@ from logging_utils import get_logger  # type: ignore[import-untyped]
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("resolve_noncode_2016", snakemake.log[0])  # type: ignore[name-defined]
 
-unresolved_path: str = snakemake.input.noncode_v4_unresolved   # type: ignore[name-defined]
-nc2016_fa: str = snakemake.params.nc2016_fa                     # type: ignore[name-defined]
-out_resolved: str = snakemake.output.resolved                   # type: ignore[name-defined]
-out_unresolved: str = snakemake.output.unresolved               # type: ignore[name-defined]
+unresolved_path: str = snakemake.input.noncode_v4_unresolved  # type: ignore[name-defined]
+nc2016_fa: str = snakemake.params.nc2016_fa  # type: ignore[name-defined]
+out_resolved: str = snakemake.output.resolved  # type: ignore[name-defined]
+out_unresolved: str = snakemake.output.unresolved  # type: ignore[name-defined]
 
 # ── Schema ────────────────────────────────────────────────────
 RESOLVED_COLS = [
@@ -59,38 +60,38 @@ UNRESOLVED_COLS = ["transcript_id", "raw_header", "source_file", "reason"]
 # Keys are the 7-char NONCODE prefix; values: (organism, canonical assembly).
 # Assembly is kept for downstream reference even though coords will be NA.
 SPECIES_META: dict[str, tuple[str, str]] = {
-    "NONDMET": ("Drosophila melanogaster",   "dm6"),
-    "NONDMEG": ("Drosophila melanogaster",   "dm6"),
-    "NONCELT": ("Caenorhabditis elegans",    "ce10"),
-    "NONCELG": ("Caenorhabditis elegans",    "ce10"),
-    "NONDRET": ("Danio rerio",               "danRer10"),
-    "NONDREG": ("Danio rerio",               "danRer10"),
-    "NONGGAT": ("Gallus gallus",             "galGal4"),
-    "NONGGAG": ("Gallus gallus",             "galGal4"),
-    "NONMDOT": ("Monodelphis domestica",     "monDom5"),
-    "NONMDOG": ("Monodelphis domestica",     "monDom5"),
-    "NONOANT": ("Ornithorhynchus anatinus",  "ornAna1"),
-    "NONOANG": ("Ornithorhynchus anatinus",  "ornAna1"),
-    "NONPPYT": ("Pongo abelii",              "ponAbe2"),
-    "NONPPYG": ("Pongo abelii",              "ponAbe2"),
-    "NONRATT": ("Rattus norvegicus",         "rn6"),
-    "NONRATG": ("Rattus norvegicus",         "rn6"),
-    "NONATHT": ("Arabidopsis thaliana",      "tair10"),
-    "NONATHG": ("Arabidopsis thaliana",      "tair10"),
-    "NONBTAT": ("Bos taurus",               "bosTau6"),
-    "NONBTAG": ("Bos taurus",               "bosTau6"),
-    "NONHSAT": ("Homo sapiens",             "hg38"),
-    "NONHSAG": ("Homo sapiens",             "hg38"),
-    "NONMMUT": ("Mus musculus",             "mm10"),
-    "NONMMUG": ("Mus musculus",             "mm10"),
-    "NONPTRT": ("Pan troglodytes",          "panTro4"),
-    "NONPTRG": ("Pan troglodytes",          "panTro4"),
-    "NONGGOT": ("Gorilla gorilla",          "gorGor3"),
-    "NONGROG": ("Gorilla gorilla",          "gorGor3"),
-    "NONMMLT": ("Macaca mulatta",           "rheMac3"),
-    "NONMMLG": ("Macaca mulatta",           "rheMac3"),
-    "NONSSCG": ("Sus scrofa",               "susScr3"),
-    "NONSSCT": ("Sus scrofa",               "susScr3"),
+    "NONDMET": ("Drosophila melanogaster", "dm6"),
+    "NONDMEG": ("Drosophila melanogaster", "dm6"),
+    "NONCELT": ("Caenorhabditis elegans", "ce10"),
+    "NONCELG": ("Caenorhabditis elegans", "ce10"),
+    "NONDRET": ("Danio rerio", "danRer10"),
+    "NONDREG": ("Danio rerio", "danRer10"),
+    "NONGGAT": ("Gallus gallus", "galGal4"),
+    "NONGGAG": ("Gallus gallus", "galGal4"),
+    "NONMDOT": ("Monodelphis domestica", "monDom5"),
+    "NONMDOG": ("Monodelphis domestica", "monDom5"),
+    "NONOANT": ("Ornithorhynchus anatinus", "ornAna1"),
+    "NONOANG": ("Ornithorhynchus anatinus", "ornAna1"),
+    "NONPPYT": ("Pongo abelii", "ponAbe2"),
+    "NONPPYG": ("Pongo abelii", "ponAbe2"),
+    "NONRATT": ("Rattus norvegicus", "rn6"),
+    "NONRATG": ("Rattus norvegicus", "rn6"),
+    "NONATHT": ("Arabidopsis thaliana", "tair10"),
+    "NONATHG": ("Arabidopsis thaliana", "tair10"),
+    "NONBTAT": ("Bos taurus", "bosTau6"),
+    "NONBTAG": ("Bos taurus", "bosTau6"),
+    "NONHSAT": ("Homo sapiens", "hg38"),
+    "NONHSAG": ("Homo sapiens", "hg38"),
+    "NONMMUT": ("Mus musculus", "mm10"),
+    "NONMMUG": ("Mus musculus", "mm10"),
+    "NONPTRT": ("Pan troglodytes", "panTro4"),
+    "NONPTRG": ("Pan troglodytes", "panTro4"),
+    "NONGGOT": ("Gorilla gorilla", "gorGor3"),
+    "NONGROG": ("Gorilla gorilla", "gorGor3"),
+    "NONMMLT": ("Macaca mulatta", "rheMac3"),
+    "NONMMLG": ("Macaca mulatta", "rheMac3"),
+    "NONSSCG": ("Sus scrofa", "susScr3"),
+    "NONSSCT": ("Sus scrofa", "susScr3"),
 }
 
 _NON_PREFIX_RE = re.compile(r"^(NON[A-Z]{3}[TG])\d+\.\d+$")
@@ -143,17 +144,24 @@ for _, row in df_unres.iterrows():
     prefix = _noncode_prefix(tid)
     if prefix is None:
         still_unresolved_rows.append(
-            {"transcript_id": tid, "raw_header": raw_header,
-             "source_file": source_file, "reason": "invalid_noncode_format"}
+            {
+                "transcript_id": tid,
+                "raw_header": raw_header,
+                "source_file": source_file,
+                "reason": "invalid_noncode_format",
+            }
         )
         continue
 
     meta = SPECIES_META.get(prefix)
     if meta is None:
         still_unresolved_rows.append(
-            {"transcript_id": tid, "raw_header": raw_header,
-             "source_file": source_file,
-             "reason": f"unknown_noncode_prefix:{prefix}"}
+            {
+                "transcript_id": tid,
+                "raw_header": raw_header,
+                "source_file": source_file,
+                "reason": f"unknown_noncode_prefix:{prefix}",
+            }
         )
         continue
 
@@ -163,8 +171,12 @@ for _, row in df_unres.iterrows():
     in_2016 = tid in nc2016_ids or base_id in nc2016_base_ids
     if not in_2016:
         still_unresolved_rows.append(
-            {"transcript_id": tid, "raw_header": raw_header,
-             "source_file": source_file, "reason": "not_found_in_any_noncode"}
+            {
+                "transcript_id": tid,
+                "raw_header": raw_header,
+                "source_file": source_file,
+                "reason": "not_found_in_any_noncode",
+            }
         )
         continue
 

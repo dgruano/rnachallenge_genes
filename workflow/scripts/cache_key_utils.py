@@ -6,7 +6,6 @@ import hashlib
 import re
 from urllib.parse import urlparse
 
-
 _COMP_EXT_RE = re.compile(r"\.(gz|bgz|bz2|xz|zip)$", re.IGNORECASE)
 _FASTA_EXT_RE = re.compile(r"\.(fa|fna|fasta|fas)$", re.IGNORECASE)
 _UNSAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")

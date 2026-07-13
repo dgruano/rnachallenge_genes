@@ -24,7 +24,9 @@ def fill_urls_from_table(
     if url_table.empty or df.empty:
         return df, 0
 
-    usable_fill_cols = [c for c in fill_cols if c in url_table.columns and c in df.columns]
+    usable_fill_cols = [
+        c for c in fill_cols if c in url_table.columns and c in df.columns
+    ]
     if not usable_fill_cols:
         return df, 0
 
@@ -49,7 +51,11 @@ def fill_urls_from_table(
                 merged = merged.drop(columns=[tmp])
         merged = merged.drop(columns=["_asm_key"])
 
-    if fallback_on_organism and "organism" in merged.columns and "organism" in url_table.columns:
+    if (
+        fallback_on_organism
+        and "organism" in merged.columns
+        and "organism" in url_table.columns
+    ):
         slim = (
             url_table[["organism"] + usable_fill_cols]
             .dropna(subset=["organism"])
@@ -67,5 +73,7 @@ def fill_urls_from_table(
                 merged = merged.drop(columns=[tmp])
         merged = merged.drop(columns=["_org_key"])
 
-    after = merged["fasta_url"].notna().sum() if "fasta_url" in merged.columns else before
+    after = (
+        merged["fasta_url"].notna().sum() if "fasta_url" in merged.columns else before
+    )
     return merged, int(after - before)

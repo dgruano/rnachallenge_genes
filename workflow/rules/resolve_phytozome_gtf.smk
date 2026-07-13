@@ -39,90 +39,30 @@ _PHYTOZOME_GTF_SOURCES = _phytozome_sources()
 # ── Download ─────────────────────────────────────────────────
 
 rule download_phytozome_gtf:
-    """Download or stage a single Phytozome GFF3 from a manifest entry."""
+    """Download or stage a single Phytozome GFF3 from a manifest entry.
+
+    Layout: resources/phytozome/<species>/<source_file_name>.gff3.gz. The
+    {species} wildcard is the folder — it equals the config key, so the script
+    can look the genome_id up by it. The inner file keeps the JGI source name
+    for traceability. The constraint stops {species} swallowing the '/'.
+    """
+    wildcard_constraints:
+        species = r"[^/]+",
     input:
         manifest = "resources/phytozome/manifest.json",
     output:
-        protected("resources/phytozome/{species}.gff3.gz"),
+        protected("resources/phytozome/{species}/{gff}"),
     log:
-        f"{LOGS}/download_phytozome_gtf/{{species}}.log",
+        f"{LOGS}/download_phytozome_gtf/{{species}}/{{gff}}.log",
     benchmark:
-        f"{BENCHMARKS}/download_phytozome_gtf/{{species}}.tsv",
+        f"{BENCHMARKS}/download_phytozome_gtf/{{species}}/{{gff}}.tsv",
     resources:
         slurm_partition = "compute",
         runtime         = 60,
         mem_mb          = 1024,
         cpus_per_task   = 1,
-    run:
-        import json
-        import os
-        import shutil
-        import urllib.request
-        from snakemake.exceptions import WorkflowError
-
-        species = wildcards.species
-        manifest_path = Path(input.manifest)
-        output_path = Path(output[0])
-        log_path = Path(log[0])
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with manifest_path.open() as fh:
-            manifest = json.load(fh)
-
-        entry = manifest.get(species)
-        if entry is None and isinstance(manifest.get("species"), dict):
-            entry = manifest["species"].get(species)
-        if entry is None:
-            raise WorkflowError(f"Phytozome manifest entry not found for species={species!r}")
-
-        status = str(entry.get("status", "RESTORED")).upper()
-        if status in {"PURGED", "COLD", "COLD_STORAGE", "ARCHIVED"}:
-            raise WorkflowError(
-                f"Phytozome file for {species} is not downloadable yet "
-                f"(status={status}). Restore it via the JGI workflow and rerun."
-            )
-
-        source_path = entry.get("local_path") or entry.get("path") or entry.get("gtf")
-        if source_path:
-            source = Path(source_path)
-            if not source.exists():
-                raise WorkflowError(f"Configured/local Phytozome source missing for {species}: {source}")
-            if source.resolve() != output_path.resolve():
-                shutil.copyfile(source, output_path)
-            else:
-                output_path.touch()
-            with log_path.open("w") as fh:
-                fh.write(f"staged {species} from {source}\n")
-            return
-
-        download_url = entry.get("download_url") or entry.get("url")
-        if not download_url:
-            file_id = entry.get("file_id") or entry.get("_id")
-            if file_id:
-                download_url = f"https://files-download.jgi.doe.gov/download_files/{file_id}/"
-
-        if not download_url:
-            raise WorkflowError(
-                f"Manifest entry for {species} must provide one of "
-                f"local_path/path/gtf/url/download_url/file_id"
-            )
-
-        headers = {}
-        token = os.environ.get("JGI_SESSION_TOKEN", "").strip()
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-
-        request = urllib.request.Request(download_url, headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response, output_path.open("wb") as out_fh:
-                shutil.copyfileobj(response, out_fh)
-        except Exception as exc:
-            raise WorkflowError(f"Failed to download Phytozome GFF3 for {species}: {exc}") from exc
-
-        with log_path.open("w") as fh:
-            fh.write(f"downloaded {species} from {download_url}\n")
+    script:
+        "../scripts/download_phytozome_gtf.py"
 
 
 # ── Resolve ──────────────────────────────────────────────────
@@ -140,7 +80,6 @@ def _phytozome_gtf_inputs_bak(wildcards):
 
 def _phytozome_gtf_inputs(wildcards):
     species_list = list(_PHYTOZOME_GTF_SOURCES.keys())
-    gff_files = []
     phytozome_sources = config.get("phytozome_gtf_sources", {})
     if not phytozome_sources:
         raise ValueError("No phytozome_gtf_sources found in config")
@@ -151,18 +90,11 @@ def _phytozome_gtf_inputs(wildcards):
         else:
             for s in species_list:
                 source = phytozome_sources[s]
-                #if not all(field in source for field in ("species_query", "genome_id", "gtf")):
                 if "gtf" not in source:
                     raise ValueError(f"Species {s} missing 'gtf' field in phytozome_gtf_sources config")
-                else:
-                    gtf_path = Path(source["gtf"])
-                    if not gtf_path.exists():
-                        raise ValueError(f"GTF file for species {s} not found at {gtf_path}")
-                    else:
-                        gff_files.append(str(gtf_path))
     return {
         "classified": f"{RESULTS}/classified_ids.tsv",
-        "gff_files": gff_files,
+        "gff_files": [phytozome_sources[s]["gtf"] for s in species_list],
     }
 
 

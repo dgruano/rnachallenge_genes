@@ -29,7 +29,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
-from ncbi_assembly_utils import set_entrez_credentials, map_genomic_to_assembly_elink
+from ncbi_assembly_utils import map_genomic_to_assembly_elink, set_entrez_credentials
 
 _CHROMOSOMAL_PREFIXES = ("NC_", "NT_", "NW_")
 
@@ -86,13 +86,19 @@ def resolve_chromosomal_rows(
             d["assembly_accession"] = gcf
             resolved_rows.append(d)
         else:
-            unresolved_rows.append({
-                "transcript_id": row.get("transcript_id"),
-                "db_source": row.get("db_source", ""),
-                "reason": f"chromosomal_mapping_failed:{acc}",
-            })
+            unresolved_rows.append(
+                {
+                    "transcript_id": row.get("transcript_id"),
+                    "db_source": row.get("db_source", ""),
+                    "reason": f"chromosomal_mapping_failed:{acc}",
+                }
+            )
 
-    resolved = pd.DataFrame(resolved_rows) if resolved_rows else pd.DataFrame(columns=df.columns)
+    resolved = (
+        pd.DataFrame(resolved_rows)
+        if resolved_rows
+        else pd.DataFrame(columns=df.columns)
+    )
     unresolved = (
         pd.DataFrame(unresolved_rows)
         if unresolved_rows
@@ -121,13 +127,12 @@ if "snakemake" in globals():
     # Identify unique chromosomal accessions
     chromosomal_mask = df["assembly_accession"].apply(is_chromosomal_accession)
     unique_chromosomal = (
-        df.loc[chromosomal_mask, "assembly_accession"]
-        .dropna()
-        .unique()
-        .tolist()
+        df.loc[chromosomal_mask, "assembly_accession"].dropna().unique().tolist()
     )
-    log.info(f"Found {chromosomal_mask.sum()} rows with chromosomal accessions "
-             f"({len(unique_chromosomal)} unique)")
+    log.info(
+        f"Found {chromosomal_mask.sum()} rows with chromosomal accessions "
+        f"({len(unique_chromosomal)} unique)"
+    )
 
     if unique_chromosomal:
         mapping = map_genomic_to_assembly_elink(
@@ -137,7 +142,9 @@ if "snakemake" in globals():
             retry_wait=RETRY_WAIT,
         )
         mapped_count = sum(1 for v in mapping.values() if v is not None)
-        log.info(f"Mapped {mapped_count}/{len(unique_chromosomal)} chromosomal accessions")
+        log.info(
+            f"Mapped {mapped_count}/{len(unique_chromosomal)} chromosomal accessions"
+        )
     else:
         log.info("No chromosomal accessions — passing through unchanged")
         mapping = {}
@@ -153,6 +160,8 @@ if "snakemake" in globals():
     log.info("=" * 60)
     log.info(f"Total input rows            : {len(df)}")
     log.info(f"Chromosomal accessions found: {chromosomal_mask.sum()}")
-    log.info(f"Successfully remapped       : {chromosomal_mask.sum() - len(unresolved_df)}")
+    log.info(
+        f"Successfully remapped       : {chromosomal_mask.sum() - len(unresolved_df)}"
+    )
     log.info(f"Could not remap             : {len(unresolved_df)}")
     log.info("resolve_ncbi_chromosome_accessions complete.")

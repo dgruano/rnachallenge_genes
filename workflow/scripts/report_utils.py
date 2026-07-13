@@ -6,7 +6,6 @@ from html import escape
 
 import pandas as pd
 
-
 MAX_INLINE_ROWS = 25
 
 FAILURE_ACTIONS = {
@@ -59,13 +58,21 @@ def df_to_html_table(
         note_parts.append(f"Showing first {max_rows} rows.")
 
     if full_href:
-        note_parts.append(f"<a class=\"file-link\" href=\"{escape(full_href)}\">{escape(full_label)}</a>")
+        note_parts.append(
+            f'<a class="file-link" href="{escape(full_href)}">{escape(full_label)}</a>'
+        )
 
-    footer = f"<p class=\"section-note\"><em>{' '.join(note_parts)}</em></p>" if note_parts else ""
+    footer = (
+        f"<p class=\"section-note\"><em>{' '.join(note_parts)}</em></p>"
+        if note_parts
+        else ""
+    )
     return df.to_html(index=False, border=0, classes="data-table") + footer
 
 
-def report_intro_html(*, report_title: str, summary: str, related_href: str, related_label: str) -> str:
+def report_intro_html(
+    *, report_title: str, summary: str, related_href: str, related_label: str
+) -> str:
     return (
         '<div class="report-intro">'
         f"<strong>{escape(report_title)}</strong>"
@@ -119,10 +126,12 @@ def next_actions_html(
             )
 
     if not actions:
-        actions.append("No blocking issues were detected. The run is ready for downstream use.")
+        actions.append(
+            "No blocking issues were detected. The run is ready for downstream use."
+        )
 
     items = "".join(f"<li>{escape(action)}</li>" for action in actions)
-    return f"<div class=\"action-box\"><strong>What to do next</strong><ul>{items}</ul></div>"
+    return f'<div class="action-box"><strong>What to do next</strong><ul>{items}</ul></div>'
 
 
 def failure_summary_rows(df_failed: pd.DataFrame) -> tuple[str, dict[str, int]]:

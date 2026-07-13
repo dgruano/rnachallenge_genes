@@ -27,6 +27,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 # Helper Functions (to be extracted into download_assemblies.py)
 # ============================================================================
 
+
 def is_ncbi_assembly_accession(accession: str) -> bool:
     """
     Check if accession is a downloadable NCBI assembly accession (GCF_/GCA_).
@@ -99,12 +100,8 @@ def split_assemblies(
             unresolved_row["reason"] = "not_resolvable_by_download_assemblies"
             unresolved.append(unresolved_row)
 
-    downloaded_df = (
-        pd.DataFrame(downloaded) if downloaded else pd.DataFrame()
-    )
-    unresolved_df = (
-        pd.DataFrame(unresolved) if unresolved else pd.DataFrame()
-    )
+    downloaded_df = pd.DataFrame(downloaded) if downloaded else pd.DataFrame()
+    unresolved_df = pd.DataFrame(unresolved) if unresolved else pd.DataFrame()
 
     return downloaded_df, unresolved_df
 
@@ -112,6 +109,7 @@ def split_assemblies(
 # ============================================================================
 # Test Cases
 # ============================================================================
+
 
 class TestAccessionDetection:
     """Test detection of NCBI assembly accessions."""
@@ -261,12 +259,14 @@ class TestAssemblySplitting:
         """Test all GCF_ accessions go to downloaded when not cached."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1", "TX2"],
-                "assembly_accession": ["GCF_000001405.40", "GCF_000002035.6"],
-                "organism": ["homo sapiens", "danio rerio"],
-                "db_source": ["ncbi", "ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1", "TX2"],
+                    "assembly_accession": ["GCF_000001405.40", "GCF_000002035.6"],
+                    "organism": ["homo sapiens", "danio rerio"],
+                    "db_source": ["ncbi", "ncbi"],
+                }
+            )
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             assert len(downloaded) == 2
@@ -280,12 +280,14 @@ class TestAssemblySplitting:
         """Test GCA_ accessions are handled same as GCF_."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1"],
-                "assembly_accession": ["GCA_000001405.1"],
-                "organism": ["homo sapiens"],
-                "db_source": ["ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1"],
+                    "assembly_accession": ["GCA_000001405.1"],
+                    "organism": ["homo sapiens"],
+                    "db_source": ["ncbi"],
+                }
+            )
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             assert len(downloaded) == 1
@@ -295,12 +297,14 @@ class TestAssemblySplitting:
         """Test non-NCBI accessions go to unresolved."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1", "TX2", "TX3"],
-                "assembly_accession": ["GRCh38", "NC_000001.11", "hg38"],
-                "organism": ["homo sapiens", "homo sapiens", "homo sapiens"],
-                "db_source": ["ensembl", "ncbi", "ucsc"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1", "TX2", "TX3"],
+                    "assembly_accession": ["GRCh38", "NC_000001.11", "hg38"],
+                    "organism": ["homo sapiens", "homo sapiens", "homo sapiens"],
+                    "db_source": ["ensembl", "ncbi", "ucsc"],
+                }
+            )
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             assert len(downloaded) == 0
@@ -312,17 +316,24 @@ class TestAssemblySplitting:
         """Test correct splitting of mixed accessions."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1", "TX2", "TX3", "TX4"],
-                "assembly_accession": [
-                    "GCF_000001405.40",  # NCBI, not cached → download
-                    "GRCh38",             # Non-NCBI → unresolved
-                    "GCA_000001405.1",   # NCBI, not cached → download
-                    "NC_000001.11",       # Sequence accession → unresolved
-                ],
-                "organism": ["homo sapiens", "homo sapiens", "homo sapiens", "homo sapiens"],
-                "db_source": ["ncbi", "ensembl", "ncbi", "ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1", "TX2", "TX3", "TX4"],
+                    "assembly_accession": [
+                        "GCF_000001405.40",  # NCBI, not cached → download
+                        "GRCh38",  # Non-NCBI → unresolved
+                        "GCA_000001405.1",  # NCBI, not cached → download
+                        "NC_000001.11",  # Sequence accession → unresolved
+                    ],
+                    "organism": [
+                        "homo sapiens",
+                        "homo sapiens",
+                        "homo sapiens",
+                        "homo sapiens",
+                    ],
+                    "db_source": ["ncbi", "ensembl", "ncbi", "ncbi"],
+                }
+            )
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             assert len(downloaded) == 2
@@ -342,12 +353,14 @@ class TestAssemblySplitting:
             (asm_dir / "genome.fasta").touch()
             (asm_dir / "genome.fasta.fai").touch()
 
-            df = pd.DataFrame({
-                "transcript_id": ["TX1", "TX2"],
-                "assembly_accession": ["GCF_000001405.40", "GCF_000002035.6"],
-                "organism": ["homo sapiens", "danio rerio"],
-                "db_source": ["ncbi", "ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1", "TX2"],
+                    "assembly_accession": ["GCF_000001405.40", "GCF_000002035.6"],
+                    "organism": ["homo sapiens", "danio rerio"],
+                    "db_source": ["ncbi", "ncbi"],
+                }
+            )
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             # Only uncached assembly should be in downloaded
@@ -359,31 +372,37 @@ class TestAssemblySplitting:
         """Test that unresolved rows include reason field."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1"],
-                "assembly_accession": ["GRCh38"],
-                "organism": ["homo sapiens"],
-                "db_source": ["ensembl"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1"],
+                    "assembly_accession": ["GRCh38"],
+                    "organism": ["homo sapiens"],
+                    "db_source": ["ensembl"],
+                }
+            )
             _, unresolved = split_assemblies(df, cache_dir)
 
             assert "reason" in unresolved.columns
-            assert unresolved.iloc[0]["reason"] == "not_resolvable_by_download_assemblies"
+            assert (
+                unresolved.iloc[0]["reason"] == "not_resolvable_by_download_assemblies"
+            )
 
     def test_duplicates_removed_before_split(self):
         """Test that duplicate assemblies are deduplicated."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1", "TX2", "TX3"],
-                "assembly_accession": [
-                    "GCF_000001405.40",
-                    "GCF_000001405.40",
-                    "GCF_000001405.40",
-                ],
-                "organism": ["homo sapiens", "homo sapiens", "homo sapiens"],
-                "db_source": ["ncbi", "ncbi", "ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1", "TX2", "TX3"],
+                    "assembly_accession": [
+                        "GCF_000001405.40",
+                        "GCF_000001405.40",
+                        "GCF_000001405.40",
+                    ],
+                    "organism": ["homo sapiens", "homo sapiens", "homo sapiens"],
+                    "db_source": ["ncbi", "ncbi", "ncbi"],
+                }
+            )
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             # Should be only one unique assembly
@@ -394,11 +413,13 @@ class TestAssemblySplitting:
         """Test handling of missing assembly_accession."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1"],
-                "organism": ["homo sapiens"],
-                "db_source": ["ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1"],
+                    "organism": ["homo sapiens"],
+                    "db_source": ["ncbi"],
+                }
+            )
             # Should not crash, just have no assemblies
             downloaded, unresolved = split_assemblies(df, cache_dir)
             assert len(downloaded) == 0
@@ -408,12 +429,14 @@ class TestAssemblySplitting:
         """Test handling of NaN/None in assembly_accession."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1", "TX2"],
-                "assembly_accession": [None, pd.NA],
-                "organism": ["homo sapiens", "homo sapiens"],
-                "db_source": ["ncbi", "ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1", "TX2"],
+                    "assembly_accession": [None, pd.NA],
+                    "organism": ["homo sapiens", "homo sapiens"],
+                    "db_source": ["ncbi", "ncbi"],
+                }
+            )
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             # Null values should be dropped, so no output
@@ -430,12 +453,14 @@ class TestAssemblySplitting:
             (asm_dir / "genome.fasta").touch()
             # Note: genome.fasta.fai NOT created
 
-            df = pd.DataFrame({
-                "transcript_id": ["TX1"],
-                "assembly_accession": ["GCF_000001405.40"],
-                "organism": ["homo sapiens"],
-                "db_source": ["ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1"],
+                    "assembly_accession": ["GCF_000001405.40"],
+                    "organism": ["homo sapiens"],
+                    "db_source": ["ncbi"],
+                }
+            )
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             # Assembly should be marked for download because index is missing
@@ -453,12 +478,14 @@ class TestAssemblySplitting:
             (asm_dir / "genome.fasta").touch()
             (asm_dir / "genome.fasta.fai").touch()
 
-            df = pd.DataFrame({
-                "transcript_id": ["TX1"],
-                "assembly_accession": ["GCF_000001405.40"],
-                "organism": ["homo sapiens"],
-                "db_source": ["ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1"],
+                    "assembly_accession": ["GCF_000001405.40"],
+                    "organism": ["homo sapiens"],
+                    "db_source": ["ncbi"],
+                }
+            )
             downloaded, unresolved = split_assemblies(df, cache_dir)
 
             # Fully cached assembly should be in neither output
@@ -473,12 +500,14 @@ class TestOutputFormat:
         """Test that downloaded TSV has required columns."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1"],
-                "assembly_accession": ["GCF_000001405.40"],
-                "organism": ["homo sapiens"],
-                "db_source": ["ncbi"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1"],
+                    "assembly_accession": ["GCF_000001405.40"],
+                    "organism": ["homo sapiens"],
+                    "db_source": ["ncbi"],
+                }
+            )
             downloaded, _ = split_assemblies(df, cache_dir)
 
             required = ["assembly_accession", "organism", "db_source"]
@@ -489,12 +518,14 @@ class TestOutputFormat:
         """Test that unresolved TSV has reason column."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir)
-            df = pd.DataFrame({
-                "transcript_id": ["TX1"],
-                "assembly_accession": ["GRCh38"],
-                "organism": ["homo sapiens"],
-                "db_source": ["ensembl"],
-            })
+            df = pd.DataFrame(
+                {
+                    "transcript_id": ["TX1"],
+                    "assembly_accession": ["GRCh38"],
+                    "organism": ["homo sapiens"],
+                    "db_source": ["ensembl"],
+                }
+            )
             _, unresolved = split_assemblies(df, cache_dir)
 
             assert "reason" in unresolved.columns

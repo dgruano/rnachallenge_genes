@@ -21,7 +21,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 TARGET_TEMPLATE = "resources/cache/{cache_key}/.download_done"
 
 
@@ -71,7 +70,9 @@ def _select_key_column(df: pd.DataFrame, preferred: str) -> str:
     )
 
 
-def build_targets(df: pd.DataFrame, *, reason_prefix: str, key_column: str, reason_column: str) -> list[str]:
+def build_targets(
+    df: pd.DataFrame, *, reason_prefix: str, key_column: str, reason_column: str
+) -> list[str]:
     if reason_column not in df.columns:
         raise ValueError(f"input table missing required '{reason_column}' column")
 
@@ -79,12 +80,7 @@ def build_targets(df: pd.DataFrame, *, reason_prefix: str, key_column: str, reas
 
     reasons = df[reason_column].astype("string").fillna("").str.strip()
     mask = reasons.str.startswith(reason_prefix)
-    keys = (
-        df.loc[mask, selected_key_column]
-        .dropna()
-        .astype(str)
-        .str.strip()
-    )
+    keys = df.loc[mask, selected_key_column].dropna().astype(str).str.strip()
     targets = [TARGET_TEMPLATE.format(cache_key=key) for key in keys if key]
     return list(dict.fromkeys(targets))
 

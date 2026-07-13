@@ -28,6 +28,7 @@ Outputs
 noncode_v4_resolved.tsv   — RESOLVED_COLS schema
 noncode_v4_unresolved.tsv — transcript_id, raw_header, source_file, reason
 """
+
 import re
 import sys
 import zipfile
@@ -41,11 +42,11 @@ from logging_utils import get_logger  # type: ignore[import-untyped]
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("resolve_noncode_v4", snakemake.log[0])  # type: ignore[name-defined]
 
-unresolved_path: str = snakemake.input.noncode_unresolved   # type: ignore[name-defined]
+unresolved_path: str = snakemake.input.noncode_unresolved  # type: ignore[name-defined]
 transcript2gene_path: str = snakemake.input.transcript2gene  # type: ignore[name-defined]
-v4_bed_zip: str = snakemake.params.v4_bed_zip               # type: ignore[name-defined]
-out_resolved: str = snakemake.output.resolved               # type: ignore[name-defined]
-out_unresolved: str = snakemake.output.unresolved           # type: ignore[name-defined]
+v4_bed_zip: str = snakemake.params.v4_bed_zip  # type: ignore[name-defined]
+out_resolved: str = snakemake.output.resolved  # type: ignore[name-defined]
+out_unresolved: str = snakemake.output.unresolved  # type: ignore[name-defined]
 
 # ── Schema ────────────────────────────────────────────────────
 RESOLVED_COLS = [
@@ -67,20 +68,20 @@ UNRESOLVED_COLS = ["transcript_id", "raw_header", "source_file", "reason"]
 # Maps 7-char NON prefix → (organism, v4 assembly, BED file name suffix)
 # Only assemblies present in NONCODEv4_wholeSpecies_lncAndGene_bed.zip.
 V4_META: dict[str, tuple[str, str]] = {
-    "NONCELT": ("Caenorhabditis elegans",   "ce10"),
-    "NONCELG": ("Caenorhabditis elegans",   "ce10"),
-    "NONDMET": ("Drosophila melanogaster",  "dm3"),
-    "NONDMEG": ("Drosophila melanogaster",  "dm3"),
-    "NONDRET": ("Danio rerio",              "danRer7"),
-    "NONDREG": ("Danio rerio",              "danRer7"),
-    "NONGGAT": ("Gallus gallus",            "galGal3"),
-    "NONGGAG": ("Gallus gallus",            "galGal3"),
-    "NONBTAT": ("Bos taurus",               "bosTau6"),
-    "NONBTAG": ("Bos taurus",               "bosTau6"),
-    "NONHSAT": ("Homo sapiens",             "hg19"),
-    "NONHSAG": ("Homo sapiens",             "hg19"),
-    "NONMMUT": ("Mus musculus",             "mm9"),
-    "NONMMUG": ("Mus musculus",             "mm9"),
+    "NONCELT": ("Caenorhabditis elegans", "ce10"),
+    "NONCELG": ("Caenorhabditis elegans", "ce10"),
+    "NONDMET": ("Drosophila melanogaster", "dm3"),
+    "NONDMEG": ("Drosophila melanogaster", "dm3"),
+    "NONDRET": ("Danio rerio", "danRer7"),
+    "NONDREG": ("Danio rerio", "danRer7"),
+    "NONGGAT": ("Gallus gallus", "galGal3"),
+    "NONGGAG": ("Gallus gallus", "galGal3"),
+    "NONBTAT": ("Bos taurus", "bosTau6"),
+    "NONBTAG": ("Bos taurus", "bosTau6"),
+    "NONHSAT": ("Homo sapiens", "hg19"),
+    "NONHSAG": ("Homo sapiens", "hg19"),
+    "NONMMUT": ("Mus musculus", "mm9"),
+    "NONMMUG": ("Mus musculus", "mm9"),
 }
 
 _NON_PREFIX_RE = re.compile(r"^(NON[A-Z]{3}[TG])\d+\.\d+$")
@@ -134,10 +135,10 @@ def _load_bed(asm: str) -> dict[str, BedCoords]:
                         continue
                     tid = parts[3]
                     coords[tid] = (
-                        parts[0],           # chrom
+                        parts[0],  # chrom
                         int(parts[1]) + 1,  # start 0-based → 1-based
-                        int(parts[2]),      # end
-                        parts[5],           # strand
+                        int(parts[2]),  # end
+                        parts[5],  # strand
                     )
     except KeyError:
         log.warning(f"  v4 BED entry missing in zip: {inner}")
@@ -161,8 +162,12 @@ for _, row in df_unres.iterrows():
     prefix = _noncode_prefix(tid)
     if prefix is None:
         still_unresolved_rows.append(
-            {"transcript_id": tid, "raw_header": raw_header,
-             "source_file": source_file, "reason": "invalid_noncode_format"}
+            {
+                "transcript_id": tid,
+                "raw_header": raw_header,
+                "source_file": source_file,
+                "reason": "invalid_noncode_format",
+            }
         )
         continue
 
@@ -170,8 +175,12 @@ for _, row in df_unres.iterrows():
     if v4_meta is None:
         # Species not covered by NONCODEv4 (rat, opossum, platypus, etc.)
         still_unresolved_rows.append(
-            {"transcript_id": tid, "raw_header": raw_header,
-             "source_file": source_file, "reason": "not_in_noncode_v4_species"}
+            {
+                "transcript_id": tid,
+                "raw_header": raw_header,
+                "source_file": source_file,
+                "reason": "not_in_noncode_v4_species",
+            }
         )
         continue
 
@@ -194,25 +203,29 @@ for _, row in df_unres.iterrows():
 
     if bed_entry is None:
         still_unresolved_rows.append(
-            {"transcript_id": tid, "raw_header": raw_header,
-             "source_file": source_file, "reason": "not_found_in_noncode_v4"}
+            {
+                "transcript_id": tid,
+                "raw_header": raw_header,
+                "source_file": source_file,
+                "reason": "not_found_in_noncode_v4",
+            }
         )
         continue
 
     chrom, start, end, strand = bed_entry
     resolved_rows.append(
         {
-            "transcript_id":      tid,
-            "db_source":          "noncode_v4",
-            "gene_id":            gene_id if gene_id else base_id,
-            "gene_symbol":        gene_id if gene_id else base_id,
-            "organism":           organism,
+            "transcript_id": tid,
+            "db_source": "noncode_v4",
+            "gene_id": gene_id if gene_id else base_id,
+            "gene_symbol": gene_id if gene_id else base_id,
+            "organism": organism,
             "assembly_accession": v4_asm,
-            "chrom":              chrom,
-            "start":              start,
-            "end":                end,
-            "strand":             strand,
-            "is_ambiguous":       False,
+            "chrom": chrom,
+            "start": start,
+            "end": end,
+            "strand": strand,
+            "is_ambiguous": False,
         }
     )
 

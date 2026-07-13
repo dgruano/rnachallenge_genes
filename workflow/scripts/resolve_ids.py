@@ -117,7 +117,11 @@ def _parse_efetch_feature_table(ft_text: str) -> dict[str, dict]:
             continue
 
         stripped = line.strip()
-        if stripped.startswith("db_xref") and "GeneID:" in stripped and not current_gene_id:
+        if (
+            stripped.startswith("db_xref")
+            and "GeneID:" in stripped
+            and not current_gene_id
+        ):
             current_gene_id = stripped.split("GeneID:", 1)[1].strip()
         elif stripped.startswith("gene") and not current_gene_symbol:
             tokens = stripped.split()
@@ -173,7 +177,9 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
         handle = with_retry(
             Entrez.esearch,
             db="nucleotide",
-            term=" OR ".join(f"{acc}" for acc in batch),  # Removed [ACCN] to include suppressed records
+            term=" OR ".join(
+                f"{acc}" for acc in batch
+            ),  # Removed [ACCN] to include suppressed records
             retmax=len(batch) * 5,
             label="ncbi_esearch",
         )
@@ -186,7 +192,7 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
         if not gis:
             log.warning(f"  NCBI esearch returned no GIs for batch at index {i}")
             continue
-        
+
         link_handle = with_retry(
             Entrez.elink,
             dbfrom="nucleotide",
@@ -274,8 +280,10 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                 if gi not in gi_to_accessions:
                     gi_to_accessions[gi] = []
                 gi_to_accessions[gi].extend([acc, acc_v])
-        
-        log.debug(f"  Built accn_to_gi with {len(accn_to_gi)} keys from {len(nucl_summaries)} docs")
+
+        log.debug(
+            f"  Built accn_to_gi with {len(accn_to_gi)} keys from {len(nucl_summaries)} docs"
+        )
 
         # Fast fallback map for suppressed/deleted records and no-gene-link records.
         # One batched efetch call per chunk is much faster than per-ID efetch.
@@ -290,7 +298,7 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
             # Try full ID first, then base ID (without version suffix)
             tid_base = tid.split(".")[0] if "." in tid else tid
             gi = accn_to_gi.get(tid) or accn_to_gi.get(tid_base)
-            
+
             # FALLBACK: If ID not in accn_to_gi, try direct esearch
             if gi is None:
                 log.debug(f"  NCBI: {tid} not in accn_to_gi, trying direct esearch")
@@ -308,8 +316,10 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                         fallback_gis = fallback_res.get("IdList", [])
                         if fallback_gis:
                             gi = str(fallback_gis[0])
-                            log.debug(f"  NCBI: {tid} found via direct search → GI={gi}")
-                            
+                            log.debug(
+                                f"  NCBI: {tid} found via direct search → GI={gi}"
+                            )
+
                             # Need to get gene links for this newly found GI
                             link_handle = with_retry(
                                 Entrez.elink,
@@ -325,18 +335,24 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                                     for link_set in link_res:
                                         gene_ids = [
                                             str(link["Id"])
-                                            for db_links in link_set.get("LinkSetDb", [])
+                                            for db_links in link_set.get(
+                                                "LinkSetDb", []
+                                            )
                                             if db_links["LinkName"] == "nuccore_gene"
                                             for link in db_links["Link"]
                                         ]
                                         if gene_ids:
                                             gi_to_genes[gi] = gene_ids
-                                            log.debug(f"  NCBI: linked GI={gi} → {len(gene_ids)} genes")
+                                            log.debug(
+                                                f"  NCBI: linked GI={gi} → {len(gene_ids)} genes"
+                                            )
                                 except Exception as exc:
-                                    log.warning(f"  NCBI: elink fallback failed for GI={gi}: {exc}")
+                                    log.warning(
+                                        f"  NCBI: elink fallback failed for GI={gi}: {exc}"
+                                    )
                     except Exception as exc:
                         log.warning(f"  NCBI: direct esearch failed for {tid}: {exc}")
-            
+
             # Try base ID without version if still not found
             if gi is None and tid != tid_base:
                 log.debug(f"  NCBI: trying base ID {tid_base}")
@@ -355,7 +371,7 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                         if fallback_gis:
                             gi = str(fallback_gis[0])
                             log.debug(f"  NCBI: {tid_base} found → GI={gi}")
-                            
+
                             # Get gene links for newly found GI
                             link_handle = with_retry(
                                 Entrez.elink,
@@ -371,18 +387,26 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                                     for link_set in link_res:
                                         gene_ids = [
                                             str(link["Id"])
-                                            for db_links in link_set.get("LinkSetDb", [])
+                                            for db_links in link_set.get(
+                                                "LinkSetDb", []
+                                            )
                                             if db_links["LinkName"] == "nuccore_gene"
                                             for link in db_links["Link"]
                                         ]
                                         if gene_ids:
                                             gi_to_genes[gi] = gene_ids
-                                            log.info(f"  NCBI: {tid} resolved via base ID {tid_base} → {len(gene_ids)} genes")
+                                            log.info(
+                                                f"  NCBI: {tid} resolved via base ID {tid_base} → {len(gene_ids)} genes"
+                                            )
                                 except Exception as exc:
-                                    log.warning(f"  NCBI: elink base fallback failed for GI={gi}: {exc}")
+                                    log.warning(
+                                        f"  NCBI: elink base fallback failed for GI={gi}: {exc}"
+                                    )
                     except Exception as exc:
-                        log.warning(f"  NCBI: base ID esearch failed for {tid_base}: {exc}")
-            
+                        log.warning(
+                            f"  NCBI: base ID esearch failed for {tid_base}: {exc}"
+                        )
+
             if gi is None:
                 gene_ids_for_tid = []
                 efetch_info = efetch_map.get(tid)
@@ -394,7 +418,9 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                         f"  NCBI: {tid} resolved via batched efetch fallback (suppressed record) → gene {synthetic_gid}"
                     )
                 else:
-                    log.warning(f"  NCBI: could not resolve {tid} even via efetch fallback")
+                    log.warning(
+                        f"  NCBI: could not resolve {tid} even via efetch fallback"
+                    )
                     continue
             else:
                 # Try gene link for the found GI
@@ -404,9 +430,13 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                 if efetch_info and efetch_info.get("gene_id"):
                     synthetic_gid = efetch_info["gene_id"]
                     gene_ids_for_tid = [synthetic_gid]
-                    log.info(f"  NCBI: {tid} resolved via batched efetch fallback → gene {synthetic_gid}")
+                    log.info(
+                        f"  NCBI: {tid} resolved via batched efetch fallback → gene {synthetic_gid}"
+                    )
                 if not gene_ids_for_tid:
-                    log.warning(f"  NCBI: no gene link for transcript {tid} (GI={gi}) even after efetch fallback")
+                    log.warning(
+                        f"  NCBI: no gene link for transcript {tid} (GI={gi}) even after efetch fallback"
+                    )
                     continue
 
             is_ambiguous = len(gene_ids_for_tid) > 1
@@ -416,11 +446,15 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                 )
 
             primary_gid = gene_ids_for_tid[0]
-            
+
             # If gene info not yet fetched (e.g., from fallback), fetch it now
             if primary_gid not in gene_info:
-                log.debug(f"  Fetching gene info for newly discovered gene {primary_gid}")
-                missing_gene_ids = [gid for gid in gene_ids_for_tid if gid not in gene_info]
+                log.debug(
+                    f"  Fetching gene info for newly discovered gene {primary_gid}"
+                )
+                missing_gene_ids = [
+                    gid for gid in gene_ids_for_tid if gid not in gene_info
+                ]
                 if missing_gene_ids:
                     gene_fetch_handle = with_retry(
                         Entrez.esummary,
@@ -432,23 +466,30 @@ def resolve_ncbi_batch(transcript_ids: list[str]) -> tuple[list[dict], list[dict
                         try:
                             gene_fetch_summaries = Entrez.read(gene_fetch_handle)
                             gene_fetch_handle.close()
-                            for doc in gene_fetch_summaries.get("DocumentSummarySet", {}).get("DocumentSummary", []):
+                            for doc in gene_fetch_summaries.get(
+                                "DocumentSummarySet", {}
+                            ).get("DocumentSummary", []):
                                 gid = doc.attributes.get("uid", "")
                                 genomic_info = doc.get("GenomicInfo", [{}])
                                 loc = genomic_info[0] if genomic_info else {}
                                 gene_info[gid] = {
                                     "gene_id": gid,
                                     "gene_symbol": doc.get("Name", ""),
-                                    "organism": doc.get("Organism", {}).get("ScientificName", ""),
+                                    "organism": doc.get("Organism", {}).get(
+                                        "ScientificName", ""
+                                    ),
                                     "assembly_accession": loc.get("ChrAccVer", ""),
                                     "chrom": loc.get("ChrLoc", ""),
                                     "start": int(loc.get("ChrStart", 0)),
                                     "end": int(loc.get("ChrStop", 0)),
-                                    "strand": str(loc.get("ChrStrand", "")).strip() or "+",
+                                    "strand": str(loc.get("ChrStrand", "")).strip()
+                                    or "+",
                                 }
                         except Exception as exc:
-                            log.warning(f"  Failed to fetch gene info for {missing_gene_ids}: {exc}")
-            
+                            log.warning(
+                                f"  Failed to fetch gene info for {missing_gene_ids}: {exc}"
+                            )
+
             primary = gene_info.get(primary_gid, {})
             if not primary:
                 primary = {
@@ -614,7 +655,10 @@ for db_source, group in df_cls.groupby("db_source"):
     not_found = [tid for tid in ids if tid not in resolved_ids]
     reason = "not_found_in_ncbi" if db_source == "ncbi" else "not_found_in_ucsc"
     all_unresolved.extend(
-        [{"transcript_id": tid, "db_source": db_source, "reason": reason} for tid in not_found]
+        [
+            {"transcript_id": tid, "db_source": db_source, "reason": reason}
+            for tid in not_found
+        ]
     )
 
     log.info(

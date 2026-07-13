@@ -107,7 +107,15 @@ for idx, row in df.iterrows():
     if pd.isna(row["start"]) or pd.isna(row["end"]):
         log.warning(f"  [{label}] Missing coordinates (start/end NaN) — skipping")
         skipped_no_coord += 1
-        failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "missing_coordinates"})
+        failed_rows.append(
+            {
+                "transcript_id": tid,
+                "assembly_accession": assembly,
+                "chrom": chrom,
+                "db_source": db_source,
+                "fail_reason": "missing_coordinates",
+            }
+        )
         continue
 
     start = int(row["start"])
@@ -124,7 +132,15 @@ for idx, row in df.iterrows():
     if not fasta_path.exists() or not fai_path.exists():
         log.warning(f"  [{label}] Assembly not cached — skipping")
         skipped_no_asm += 1
-        failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "assembly_not_cached"})
+        failed_rows.append(
+            {
+                "transcript_id": tid,
+                "assembly_accession": assembly,
+                "chrom": chrom,
+                "db_source": db_source,
+                "fail_reason": "assembly_not_cached",
+            }
+        )
         continue
 
     # Get chromosome lengths for clamping
@@ -144,7 +160,15 @@ for idx, row in df.iterrows():
     if chrom_key is None:
         log.warning(f"  [{label}] Chromosome {chrom!r} not found in .fai — skipping")
         skipped_no_chrom += 1
-        failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "chrom_not_found"})
+        failed_rows.append(
+            {
+                "transcript_id": tid,
+                "assembly_accession": assembly,
+                "chrom": chrom,
+                "db_source": db_source,
+                "fail_reason": "chrom_not_found",
+            }
+        )
         continue
     if chrom_key != chrom:
         log.debug(f"  [{label}] chrom name remapped {chrom!r} → {chrom_key!r}")
@@ -169,7 +193,15 @@ for idx, row in df.iterrows():
     if raw_seq is None:
         log.warning(f"  [{label}] Sequence extraction failed — skipping")
         skipped_no_seq += 1
-        failed_rows.append({"transcript_id": tid, "assembly_accession": assembly, "chrom": chrom, "db_source": db_source, "fail_reason": "sequence_error"})
+        failed_rows.append(
+            {
+                "transcript_id": tid,
+                "assembly_accession": assembly,
+                "chrom": chrom,
+                "db_source": db_source,
+                "fail_reason": "sequence_error",
+            }
+        )
         continue
 
     # Reverse complement for minus strand

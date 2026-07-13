@@ -10,34 +10,35 @@ Mirrors biomart_download.py but queries the Ensembl Plants BioMart endpoint
 The Arabidopsis dataset name in Ensembl Plants is "athaliana_eg_gene".
 """
 
+import gzip
 import sys
 import time
-import gzip
 from pathlib import Path
-import requests
+
 import pandas as pd
+import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
 
 if "snakemake" in dir():
     log = get_logger("biomart_arabidopsis_download", snakemake.log[0])
-    release     = snakemake.params.release
+    release = snakemake.params.release
     output_file = snakemake.output.table
     max_retries = int(snakemake.config.get("max_retries", 3))
-    retry_wait  = int(snakemake.config.get("retry_wait_seconds", 5))
+    retry_wait = int(snakemake.config.get("retry_wait_seconds", 5))
 else:
-    release     = sys.argv[1] if len(sys.argv) > 1 else "60"
+    release = sys.argv[1] if len(sys.argv) > 1 else "60"
     output_file = sys.argv[2] if len(sys.argv) > 2 else "athaliana_biomart.tsv.gz"
-    log_file    = sys.argv[3] if len(sys.argv) > 3 else None
+    log_file = sys.argv[3] if len(sys.argv) > 3 else None
     max_retries = 3
-    retry_wait  = 5
+    retry_wait = 5
     log = get_logger("biomart_arabidopsis_download", log_file)
 
 # Ensembl Plants uses a separate BioMart host and mart name.
 # Dataset: athaliana_eg_gene  (TAIR10 reference)
 BIOMART_URL = "https://plants.ensembl.org/biomart/martservice"
-DATASET     = "athaliana_eg_gene"
+DATASET = "athaliana_eg_gene"
 
 BIOMART_ATTRIBUTES = [
     "ensembl_transcript_id",
@@ -51,9 +52,7 @@ BIOMART_ATTRIBUTES = [
 
 
 def build_query(dataset: str, attributes: list) -> str:
-    attr_xml = "\n        ".join(
-        f'<Attribute name="{a}" />' for a in attributes
-    )
+    attr_xml = "\n        ".join(f'<Attribute name="{a}" />' for a in attributes)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<!DOCTYPE Query>\n"
@@ -71,7 +70,9 @@ def query_biomart(max_retries: int, retry_wait: int) -> pd.DataFrame:
 
     for attempt in range(1, max_retries + 1):
         try:
-            log.info(f"Querying Ensembl Plants BioMart ({DATASET}), attempt {attempt}/{max_retries}")
+            log.info(
+                f"Querying Ensembl Plants BioMart ({DATASET}), attempt {attempt}/{max_retries}"
+            )
             resp = requests.post(BIOMART_URL, data={"query": query}, timeout=300)
 
             if resp.status_code != 200:
@@ -86,8 +87,8 @@ def query_biomart(max_retries: int, retry_wait: int) -> pd.DataFrame:
                 continue
 
             header = lines[0].split("\t")
-            data   = [l.split("\t") for l in lines[1:] if l.strip()]
-            df     = pd.DataFrame(data, columns=header)
+            data = [l.split("\t") for l in lines[1:] if l.strip()]
+            df = pd.DataFrame(data, columns=header)
             log.info(f"Fetched {len(df)} rows")
             return df
 

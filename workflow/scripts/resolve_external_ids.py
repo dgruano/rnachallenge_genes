@@ -141,30 +141,51 @@ def get_rest_base_for_species(species: str) -> str:
 def is_plant_species(species: str) -> bool:
     """Check if a species is a plant (should use metadata, not REST)."""
     plant_species = {
-        "arabidopsis_thaliana", "oryza_sativa", "zea_mays", "solanum_lycopersicum",
-        "glycine_max", "brachypodium_distachyon", "triticum_aestivum", "solanum_tuberosum",
-        "populus_trichocarpa", "sorghum_bicolor", "vitis_vinifera", "brassica_rapa",
-        "brassica_napus", "brassica_oleracea", "aegilops_tauschii", "amborella_trichopoda",
-        "chlamydomonas_reinhardtii", "physcomitrella_patens", "medicago_truncatula",
-        "musa_acuminata", "oryza_brachyantha", "setaria_italica", "theobroma_cacao",
-        "citrus_sinensis", "manihot_esculenta",
+        "arabidopsis_thaliana",
+        "oryza_sativa",
+        "zea_mays",
+        "solanum_lycopersicum",
+        "glycine_max",
+        "brachypodium_distachyon",
+        "triticum_aestivum",
+        "solanum_tuberosum",
+        "populus_trichocarpa",
+        "sorghum_bicolor",
+        "vitis_vinifera",
+        "brassica_rapa",
+        "brassica_napus",
+        "brassica_oleracea",
+        "aegilops_tauschii",
+        "amborella_trichopoda",
+        "chlamydomonas_reinhardtii",
+        "physcomitrella_patens",
+        "medicago_truncatula",
+        "musa_acuminata",
+        "oryza_brachyantha",
+        "setaria_italica",
+        "theobroma_cacao",
+        "citrus_sinensis",
+        "manihot_esculenta",
     }
     return species in plant_species
 
 
 def rest_get(
-    path: str, params: Optional[dict] = None, base_url: Optional[str] = None, species: Optional[str] = None
+    path: str,
+    params: Optional[dict] = None,
+    base_url: Optional[str] = None,
+    species: Optional[str] = None,
 ) -> Optional[dict]:
     global REST_503_TOTAL
     global REST_503_CONSEC
-    
+
     if SKIP_REST_LOOKUPS:
         return None
-    
+
     # Skip REST for plant species if configured (Ensembl Plants down)
     if SKIP_REST_FOR_PLANTS and species and is_plant_species(species):
         return None
-    
+
     url = f"{(base_url or REST_BASE)}{path}"
     headers = {"Content-Type": "application/json"}
     for attempt in range(1, MAX_RETRIES + 1):
@@ -183,7 +204,10 @@ def rest_get(
                     log.error(
                         f"  REST {path} attempt {attempt} failed: 503 Domain not existing from {resp.url}"
                     )
-                if REST_503_TOTAL >= MAX_503_TOTAL or REST_503_CONSEC >= MAX_503_CONSECUTIVE:
+                if (
+                    REST_503_TOTAL >= MAX_503_TOTAL
+                    or REST_503_CONSEC >= MAX_503_CONSECUTIVE
+                ):
                     raise RuntimeError(
                         "Too many 503 responses from Ensembl REST; aborting to avoid endless retries."
                     )
@@ -203,7 +227,7 @@ def load_metadata_table(path: str) -> dict:
 
     Expected columns:
       transcript_id, gene_id, gene_symbol, assembly_accession, chrom, start, end, strand
-    
+
     Returns a dict indexed by both full transcript IDs and gene ID variants to improve
     candidate matching when version suffixes differ.
     """
@@ -241,17 +265,17 @@ def load_metadata_table(path: str) -> dict:
             "end": row["end"],
             "strand": row["strand"],
         }
-        
+
         # Index by full transcript ID
         transcript_id = str(row["transcript_id"])
         index[transcript_id] = metadata
-        
+
         # Also index by gene ID (base without transcript version)
         # This allows matching Solyc06g068790.2.1 → Solyc06g068790.3.1 via gene base
         gene_id = str(row["gene_id"])
         if gene_id and gene_id not in index:
             index[gene_id] = metadata
-        
+
         # Index by transcript base (strip trailing version)
         # e.g., Solyc06g068790.3.1 → Solyc06g068790.3 and Solyc06g068790
         if "." in transcript_id:
@@ -264,7 +288,7 @@ def load_metadata_table(path: str) -> dict:
             base = parts[0]
             if base not in index:
                 index[base] = metadata
-    
+
     return index
 
 
@@ -301,17 +325,17 @@ def generic_candidates(tid: str) -> list[str]:
 
 def plant_candidates(tid: str) -> list[str]:
     candidates = generic_candidates(tid)
-    
+
     # GRMZM (Maize): Gene ID is prefix before underscore
     if tid.startswith("GRMZM"):
         gene_id = tid.split("_")[0]
         candidates.append(gene_id)
-    
+
     # Os (Rice): Gene ID is prefix before underscore
     if tid.startswith("Os") and "_" in tid:
         gene_id = tid.split("_")[0]
         candidates.append(gene_id)
-    
+
     # Solyc (Tomato): Two dot suffixes - last is transcript, first is gene version
     # Strip last suffix first, then both if needed
     if tid.startswith("Solyc"):
@@ -323,7 +347,7 @@ def plant_candidates(tid: str) -> list[str]:
         elif tid.count(".") == 1:
             # Single dot - strip it
             candidates.append(tid.split(".")[0])
-    
+
     # Rice OS prefix variants
     if tid.startswith("OS"):
         candidates.append("Os" + tid[2:])
@@ -332,7 +356,7 @@ def plant_candidates(tid: str) -> list[str]:
             candidates.append(f"LOC_Os{match.group(1)}g{match.group(2)}")
             candidates.append(f"Os{match.group(1)}t{match.group(2)}-01")
             candidates.append(f"Os{match.group(1)}t{match.group(2)}")
-    
+
     # Glyma (Soybean): Format conversion needed
     # Input format: Glyma.10G011600.1 (dots, mixed case)
     # Metadata format: GLYMA_10G011600 (underscores, uppercase)
@@ -346,22 +370,28 @@ def plant_candidates(tid: str) -> list[str]:
             # Keep first two parts (GLYMA_10G011600)
             gene_id = "_".join(parts[:2])
             candidates.append(gene_id)
-    
+
     return [c for c in dict.fromkeys(candidates) if c]
 
 
-def lookup_ensembl_id(tid: str, base_url: Optional[str] = None, species: Optional[str] = None) -> Optional[dict]:
+def lookup_ensembl_id(
+    tid: str, base_url: Optional[str] = None, species: Optional[str] = None
+) -> Optional[dict]:
     return rest_get(f"/lookup/id/{tid}", base_url=base_url, species=species)
 
 
 def lookup_by_symbol(
     species: str, symbol: str, base_url: Optional[str] = None
 ) -> list[dict]:
-    data = rest_get(f"/xrefs/symbol/{species}/{symbol}", base_url=base_url, species=species)
+    data = rest_get(
+        f"/xrefs/symbol/{species}/{symbol}", base_url=base_url, species=species
+    )
     return data if isinstance(data, list) else []
 
 
-def lookup_xrefs_id(identifier: str, base_url: Optional[str] = None, species: Optional[str] = None) -> list[dict]:
+def lookup_xrefs_id(
+    identifier: str, base_url: Optional[str] = None, species: Optional[str] = None
+) -> list[dict]:
     data = rest_get(f"/xrefs/id/{identifier}", base_url=base_url, species=species)
     return data if isinstance(data, list) else []
 
@@ -433,7 +463,9 @@ external_df = df[df["db_source"].isin(["plant"])].copy()
 if unresolved_input:
     unresolved_df = pd.read_csv(unresolved_input, sep="\t")
     unresolved_ids = set(unresolved_df["transcript_id"].astype(str))
-    external_df = external_df[external_df["transcript_id"].astype(str).isin(unresolved_ids)].copy()
+    external_df = external_df[
+        external_df["transcript_id"].astype(str).isin(unresolved_ids)
+    ].copy()
     log.info(f"Filtering to unresolved IDs: {len(external_df)}")
 log.info(f"External IDs to resolve: {len(external_df)}")
 
@@ -450,7 +482,9 @@ for _, row in external_df.iterrows():
         resolved_count = len(resolved_rows)
         ambig_count = len(ambig_rows)
         unresolved_count = len(unresolved_rows)
-        success_rate = 100 * resolved_count / processed_count if processed_count > 0 else 0
+        success_rate = (
+            100 * resolved_count / processed_count if processed_count > 0 else 0
+        )
         log.info(
             f"Progress: {processed_count}/{total_ids} IDs ({100*processed_count/total_ids:.1f}%) | "
             f"Resolved: {resolved_count} ({success_rate:.1f}%), Ambiguous: {ambig_count}, "
@@ -458,7 +492,7 @@ for _, row in external_df.iterrows():
         )
         sys.stdout.flush()
         sys.stderr.flush()
-    
+
     transcript_id = str(row["transcript_id"])
     raw_header = str(row["raw_header"])
     source_file = str(row["source_file"])
@@ -500,7 +534,9 @@ for _, row in external_df.iterrows():
             for cand in candidates:
                 lookup = lookup_ensembl_id(cand, base_url=base_url, species=species)
                 if lookup:
-                    resolved = build_resolved_row(transcript_id, db_source, lookup, False)
+                    resolved = build_resolved_row(
+                        transcript_id, db_source, lookup, False
+                    )
                     break
         if resolved:
             resolved_rows.append(resolved)
@@ -526,14 +562,24 @@ for _, row in external_df.iterrows():
                         continue
                     lookups = []
                     for xref in xrefs:
-                        lookup = lookup_ensembl_id(xref.get("id", ""), base_url=base_url, species=species)
+                        lookup = lookup_ensembl_id(
+                            xref.get("id", ""), base_url=base_url, species=species
+                        )
                         if lookup:
-                            lookups.append(build_resolved_row(transcript_id, db_source, lookup, False))
+                            lookups.append(
+                                build_resolved_row(
+                                    transcript_id, db_source, lookup, False
+                                )
+                            )
                     if lookups:
                         chosen = lookups[0]
                         resolved_rows.append(chosen)
                         if len(lookups) > 1:
-                            ambig_rows.extend(build_ambig_rows(transcript_id, db_source, chosen, lookups[1:]))
+                            ambig_rows.extend(
+                                build_ambig_rows(
+                                    transcript_id, db_source, chosen, lookups[1:]
+                                )
+                            )
                         resolved_flag = True
                         break
 
@@ -566,7 +612,9 @@ res_df.to_csv(out_resolved, sep="\t", index=False)
 amb_df.to_csv(out_ambig, sep="\t", index=False)
 unres_df.to_csv(out_unresolved, sep="\t", index=False)
 
-log.info(f"Resolution complete: {len(res_df)} resolved, {len(amb_df)} ambiguous, {len(unres_df)} unresolved")
+log.info(
+    f"Resolution complete: {len(res_df)} resolved, {len(amb_df)} ambiguous, {len(unres_df)} unresolved"
+)
 
 log.info("=" * 60)
 log.info(f"Resolved external IDs : {len(res_df)}")

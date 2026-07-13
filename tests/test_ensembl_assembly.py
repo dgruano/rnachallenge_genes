@@ -22,12 +22,11 @@ sys.path.insert(0, str(SCRIPT_DIR))
 # Import functions from the resolver script
 from resolve_ensembl_assembly_accessions import (
     ASSEMBLY_NAME_MAPPING,
-    normalize_build_name,
+    filter_and_resolve_ensembl,
     is_grc_assembly_accession,
     map_grc_to_gcf,
-    filter_and_resolve_ensembl,
+    normalize_build_name,
 )
-
 
 # ============================================================================
 # Test Cases
@@ -133,12 +132,14 @@ class TestRowFiltering:
 
     def test_filter_only_grc_rows_processed(self):
         """Test that only rows with GRC* are flagged for mapping."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2", "TX3"],
-            "db_source": ["ensembl", "ensembl", "ensembl"],
-            "assembly_accession": ["GRCh38", "GCF_000001405.40", "unknown"],
-            "organism": ["homo sapiens", "homo sapiens", "homo sapiens"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2", "TX3"],
+                "db_source": ["ensembl", "ensembl", "ensembl"],
+                "assembly_accession": ["GRCh38", "GCF_000001405.40", "unknown"],
+                "organism": ["homo sapiens", "homo sapiens", "homo sapiens"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_ensembl(df)
 
@@ -148,12 +149,14 @@ class TestRowFiltering:
 
     def test_filter_grc_rows_are_mapped(self):
         """Test that GRC* rows are actually mapped."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["ensembl"],
-            "assembly_accession": ["GRCh38"],
-            "organism": ["homo sapiens"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["ensembl"],
+                "assembly_accession": ["GRCh38"],
+                "organism": ["homo sapiens"],
+            }
+        )
 
         resolved, _ = filter_and_resolve_ensembl(df)
 
@@ -162,12 +165,14 @@ class TestRowFiltering:
 
     def test_filter_non_grc_rows_unchanged(self):
         """Test that non-GRC rows pass through unchanged."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["ensembl", "ensembl"],
-            "assembly_accession": ["GCF_000001405.40", "unknown_value"],
-            "organism": ["homo sapiens", "canis lupus"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["ensembl", "ensembl"],
+                "assembly_accession": ["GCF_000001405.40", "unknown_value"],
+                "organism": ["homo sapiens", "canis lupus"],
+            }
+        )
 
         resolved, _ = filter_and_resolve_ensembl(df)
 
@@ -182,18 +187,20 @@ class TestResolvedVsUnresolvedSplit:
 
     def test_successful_mapping_goes_to_resolved(self):
         """Test that successfully mapped GRC* rows go to resolved output."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["ensembl", "ensembl"],
-            "assembly_accession": ["GRCh38", "GRCz11"],
-            "organism": ["homo sapiens", "danio rerio"],
-            "gene_id": ["G1", "G2"],
-            "gene_symbol": ["GENE1", "GENE2"],
-            "chrom": ["1", "1"],
-            "start": [100, 200],
-            "end": [200, 300],
-            "strand": ["+", "-"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["ensembl", "ensembl"],
+                "assembly_accession": ["GRCh38", "GRCz11"],
+                "organism": ["homo sapiens", "danio rerio"],
+                "gene_id": ["G1", "G2"],
+                "gene_symbol": ["GENE1", "GENE2"],
+                "chrom": ["1", "1"],
+                "start": [100, 200],
+                "end": [200, 300],
+                "strand": ["+", "-"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_ensembl(df)
 
@@ -204,12 +211,14 @@ class TestResolvedVsUnresolvedSplit:
 
     def test_unmapped_grc_goes_to_unresolved(self):
         """Test that unmappable GRC* rows go to unresolved output."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["ensembl"],
-            "assembly_accession": ["GRCX99_unknown"],
-            "organism": ["unknown_organism"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["ensembl"],
+                "assembly_accession": ["GRCX99_unknown"],
+                "organism": ["unknown_organism"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_ensembl(df)
 
@@ -221,18 +230,20 @@ class TestResolvedVsUnresolvedSplit:
 
     def test_mixed_rows_correct_split(self):
         """Test correct splitting when mix of mappable and non-GRC rows."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2", "TX3"],
-            "db_source": ["ensembl", "ensembl", "ensembl"],
-            "assembly_accession": ["GRCh38", "GCF_000001405.40", "GRCz11"],
-            "organism": ["homo sapiens", "homo sapiens", "danio rerio"],
-            "gene_id": ["G1", "G2", "G3"],
-            "gene_symbol": ["GENE1", "GENE2", "GENE3"],
-            "chrom": ["1", "1", "1"],
-            "start": [100, 100, 100],
-            "end": [200, 200, 200],
-            "strand": ["+", "+", "+"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2", "TX3"],
+                "db_source": ["ensembl", "ensembl", "ensembl"],
+                "assembly_accession": ["GRCh38", "GCF_000001405.40", "GRCz11"],
+                "organism": ["homo sapiens", "homo sapiens", "danio rerio"],
+                "gene_id": ["G1", "G2", "G3"],
+                "gene_symbol": ["GENE1", "GENE2", "GENE3"],
+                "chrom": ["1", "1", "1"],
+                "start": [100, 100, 100],
+                "end": [200, 200, 200],
+                "strand": ["+", "+", "+"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_ensembl(df)
 
@@ -246,19 +257,21 @@ class TestNonGRCRowsPassThrough:
 
     def test_gcf_rows_unchanged(self):
         """Test that GCF_ accessions pass through without modification."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["ensembl"],
-            "assembly_accession": ["GCF_000001405.40"],
-            "organism": ["homo sapiens"],
-            "gene_id": ["GENE1"],
-            "gene_symbol": ["SYM1"],
-            "chrom": ["1"],
-            "start": [100],
-            "end": [200],
-            "strand": ["+"],
-            "is_ambiguous": [False],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["ensembl"],
+                "assembly_accession": ["GCF_000001405.40"],
+                "organism": ["homo sapiens"],
+                "gene_id": ["GENE1"],
+                "gene_symbol": ["SYM1"],
+                "chrom": ["1"],
+                "start": [100],
+                "end": [200],
+                "strand": ["+"],
+                "is_ambiguous": [False],
+            }
+        )
 
         resolved, _ = filter_and_resolve_ensembl(df)
 
@@ -269,12 +282,14 @@ class TestNonGRCRowsPassThrough:
 
     def test_unknown_accessions_unchanged(self):
         """Test that unknown accessions pass through unchanged."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["ensembl"],
-            "assembly_accession": ["some_unknown_value"],
-            "organism": ["custom_organism"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["ensembl"],
+                "assembly_accession": ["some_unknown_value"],
+                "organism": ["custom_organism"],
+            }
+        )
 
         resolved, _ = filter_and_resolve_ensembl(df)
 
@@ -283,20 +298,22 @@ class TestNonGRCRowsPassThrough:
 
     def test_all_columns_preserved_for_passthrough(self):
         """Test that all columns are preserved for pass-through rows."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["ensembl"],
-            "assembly_accession": ["GCF_000001405.40"],
-            "organism": ["homo sapiens"],
-            "gene_id": ["G1"],
-            "gene_symbol": ["SYM1"],
-            "chrom": ["1"],
-            "start": [100],
-            "end": [200],
-            "strand": ["+"],
-            "is_ambiguous": [False],
-            "custom_field": ["value1"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["ensembl"],
+                "assembly_accession": ["GCF_000001405.40"],
+                "organism": ["homo sapiens"],
+                "gene_id": ["G1"],
+                "gene_symbol": ["SYM1"],
+                "chrom": ["1"],
+                "start": [100],
+                "end": [200],
+                "strand": ["+"],
+                "is_ambiguous": [False],
+                "custom_field": ["value1"],
+            }
+        )
 
         resolved, _ = filter_and_resolve_ensembl(df)
 
@@ -318,12 +335,14 @@ class TestEmptyAndEdgeCases:
 
     def test_dataframe_with_no_grc_rows(self):
         """Test dataframe containing no GRC* rows."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["ensembl", "ensembl"],
-            "assembly_accession": ["GCF_000001405.40", "GCA_000001405.1"],
-            "organism": ["homo sapiens", "homo sapiens"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["ensembl", "ensembl"],
+                "assembly_accession": ["GCF_000001405.40", "GCA_000001405.1"],
+                "organism": ["homo sapiens", "homo sapiens"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_ensembl(df)
 
@@ -333,12 +352,14 @@ class TestEmptyAndEdgeCases:
 
     def test_dataframe_all_grc_mappable(self):
         """Test dataframe where all rows are GRC and mappable."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["ensembl", "ensembl"],
-            "assembly_accession": ["GRCh38", "GRCz11"],
-            "organism": ["homo sapiens", "danio rerio"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["ensembl", "ensembl"],
+                "assembly_accession": ["GRCh38", "GRCz11"],
+                "organism": ["homo sapiens", "danio rerio"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_ensembl(df)
 
@@ -347,11 +368,13 @@ class TestEmptyAndEdgeCases:
 
     def test_missing_assembly_accession_column(self):
         """Test handling of rows with missing assembly_accession column."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["ensembl"],
-            "organism": ["homo sapiens"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["ensembl"],
+                "organism": ["homo sapiens"],
+            }
+        )
 
         # Should handle gracefully
         try:
@@ -363,12 +386,14 @@ class TestEmptyAndEdgeCases:
 
     def test_null_assembly_accession_values(self):
         """Test handling of NaN/None in assembly_accession."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["ensembl", "ensembl"],
-            "assembly_accession": [None, pd.NA],
-            "organism": ["homo sapiens", "homo sapiens"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["ensembl", "ensembl"],
+                "assembly_accession": [None, pd.NA],
+                "organism": ["homo sapiens", "homo sapiens"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_ensembl(df)
 

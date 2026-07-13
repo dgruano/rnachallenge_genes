@@ -15,10 +15,10 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from ncbi_assembly_utils import map_genomic_to_assembly_elink
 
-
 # ---------------------------------------------------------------------------
 # Helpers — minimal Biopython-style mock objects
 # ---------------------------------------------------------------------------
+
 
 def _make_search_result(uid: str) -> dict:
     return {"IdList": [uid], "Count": "1", "RetMax": "1", "RetStart": "0"}
@@ -31,11 +31,15 @@ def _make_empty_search_result() -> dict:
 def _make_elink_result(from_uid: str, to_uids: list[str]) -> list:
     """One LinkSet entry for a single nuccore→assembly link."""
     links = [{"Id": uid} for uid in to_uids]
-    return [{
-        "DbFrom": "nuccore",
-        "IdList": [from_uid],
-        "LinkSetDb": [{"DbTo": "assembly", "LinkName": "nuccore_assembly", "Link": links}],
-    }]
+    return [
+        {
+            "DbFrom": "nuccore",
+            "IdList": [from_uid],
+            "LinkSetDb": [
+                {"DbTo": "assembly", "LinkName": "nuccore_assembly", "Link": links}
+            ],
+        }
+    ]
 
 
 def _make_empty_elink_result(from_uid: str) -> list:
@@ -44,15 +48,20 @@ def _make_empty_elink_result(from_uid: str) -> list:
 
 class _DocSummary(dict):
     """Minimal mock for Biopython DocumentSummary (dict with .attributes)."""
+
     def __init__(self, data: dict, uid: str):
         super().__init__(data)
         self.attributes = {"uid": uid}
 
 
-def _make_esummary_result(uid: str, accession: str, organism: str = "Homo sapiens") -> dict:
+def _make_esummary_result(
+    uid: str, accession: str, organism: str = "Homo sapiens"
+) -> dict:
     return {
         "DocumentSummarySet": {
-            "DocumentSummary": [_DocSummary({"AssemblyAccession": accession, "Organism": organism}, uid)]
+            "DocumentSummary": [
+                _DocSummary({"AssemblyAccession": accession, "Organism": organism}, uid)
+            ]
         }
     }
 
@@ -60,6 +69,7 @@ def _make_esummary_result(uid: str, accession: str, organism: str = "Homo sapien
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestMapGenomicToAssemblyElink:
 
@@ -76,7 +86,7 @@ class TestMapGenomicToAssemblyElink:
             # elink returns assembly UID 999
             # esummary returns GCF_000001405.40 for assembly UID 999
             mock_read.side_effect = [
-                _make_search_result("111111"),       # esearch
+                _make_search_result("111111"),  # esearch
                 _make_elink_result("111111", ["999"]),  # elink
                 _make_esummary_result("999", "GCF_000001405.40"),  # esummary
             ]
@@ -128,19 +138,30 @@ class TestMapGenomicToAssemblyElink:
             patch("ncbi_assembly_utils.time.sleep"),
         ):
             # Two esearches (one per accession), then batched elink + esummary
-            combined_elink = (
-                _make_elink_result("111", ["901"]) +
-                _make_elink_result("222", ["902"])
+            combined_elink = _make_elink_result("111", ["901"]) + _make_elink_result(
+                "222", ["902"]
             )
             mock_read.side_effect = [
-                _make_search_result("111"),   # esearch NC_000001.11
-                _make_search_result("222"),   # esearch NC_000002.12
-                combined_elink,              # elink batch
+                _make_search_result("111"),  # esearch NC_000001.11
+                _make_search_result("222"),  # esearch NC_000002.12
+                combined_elink,  # elink batch
                 {
                     "DocumentSummarySet": {
                         "DocumentSummary": [
-                            _DocSummary({"AssemblyAccession": "GCF_000001405.40", "Organism": "Homo sapiens"}, "901"),
-                            _DocSummary({"AssemblyAccession": "GCF_000001405.40", "Organism": "Homo sapiens"}, "902"),
+                            _DocSummary(
+                                {
+                                    "AssemblyAccession": "GCF_000001405.40",
+                                    "Organism": "Homo sapiens",
+                                },
+                                "901",
+                            ),
+                            _DocSummary(
+                                {
+                                    "AssemblyAccession": "GCF_000001405.40",
+                                    "Organism": "Homo sapiens",
+                                },
+                                "902",
+                            ),
                         ]
                     }
                 },
@@ -171,7 +192,8 @@ class TestMapGenomicToAssemblyElink:
             mock_read.side_effect = [
                 _make_search_result("111"),
                 _make_search_result("222"),
-                _make_elink_result("111", [same_asm_uid]) + _make_elink_result("222", [same_asm_uid]),
+                _make_elink_result("111", [same_asm_uid])
+                + _make_elink_result("222", [same_asm_uid]),
                 _make_esummary_result(same_asm_uid, "GCF_000001405.40"),
             ]
 
