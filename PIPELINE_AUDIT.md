@@ -7,7 +7,7 @@ _Date: 2026-07-12 · Branch: `main` · HEAD: `bab60c9` (WIP: merge resolved)_
 
 ## TL;DR — UPDATED 2026-07-12 POST-FIX
 
-**Status: Extraction working, four blockers/refinements fixed.** 
+**Status: Extraction working, four blockers/refinements fixed.**
 - **Blocker #1 (chrom translation)** ✅ DONE — assembly reports fetched, chromosome names translated
 - **Blocker #2 (extract file wiring)** ✅ DONE — extract now reads remapped `ncbi_chromosome_resolved.tsv`
 - **Blocker #3 (backwards coordinates)** ✅ DONE — defensive swap added, sequence_error collapsed from 1,658 → 1

@@ -29,12 +29,12 @@ out_resolved = snakemake.output.resolved
 out_unresolved = snakemake.output.unresolved
 
 cfg = snakemake.config.get("metazoa_gtf_sources", {}).get("wormbase", {})
-ASSEMBLY_NAME      = cfg.get("assembly_name", "WBcel235")
+ASSEMBLY_NAME = cfg.get("assembly_name", "WBcel235")
 ASSEMBLY_ACCESSION = cfg.get("assembly_accession")
-FASTA_URL          = cfg.get("fasta_url")
-GTF_URL            = cfg.get("url")
-GTF_FORMAT         = cfg.get("gtf_format", "gtf")
-ORGANISM           = cfg.get("organism", "caenorhabditis_elegans")
+FASTA_URL = cfg.get("fasta_url")
+GTF_URL = cfg.get("url")
+GTF_FORMAT = cfg.get("gtf_format", "gtf")
+ORGANISM = cfg.get("organism", "caenorhabditis_elegans")
 
 WORMBASE_COORD_RE = re.compile(
     r"^(?P<transcript>[^_]+)_wormbase:known_chromosome:(?P<assembly>WBcel\d+):"

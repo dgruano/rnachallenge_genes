@@ -22,12 +22,11 @@ sys.path.insert(0, str(SCRIPT_DIR))
 # Import functions from the resolver script
 from resolve_noncode_assembly_accessions import (
     UCSC_TO_GCF_MAPPING,
-    normalize_ucsc_name,
+    filter_and_resolve_noncode,
     is_ucsc_assembly_accession,
     map_ucsc_to_gcf,
-    filter_and_resolve_noncode,
+    normalize_ucsc_name,
 )
-
 
 # ============================================================================
 # Test Cases
@@ -158,12 +157,18 @@ class TestRowFiltering:
 
     def test_filter_only_ucsc_rows_processed(self):
         """Test that only rows with UCSC names are flagged for mapping."""
-        df = pd.DataFrame({
-            "transcript_id": ["NONCELT011856.2", "TX2", "TX3"],
-            "db_source": ["noncode", "noncode", "noncode"],
-            "assembly_accession": ["ce10", "GCF_000002035.6", "unknown"],
-            "organism": ["Caenorhabditis elegans", "Caenorhabditis elegans", "unknown"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["NONCELT011856.2", "TX2", "TX3"],
+                "db_source": ["noncode", "noncode", "noncode"],
+                "assembly_accession": ["ce10", "GCF_000002035.6", "unknown"],
+                "organism": [
+                    "Caenorhabditis elegans",
+                    "Caenorhabditis elegans",
+                    "unknown",
+                ],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_noncode(df)
 
@@ -173,12 +178,14 @@ class TestRowFiltering:
 
     def test_filter_ucsc_rows_are_mapped(self):
         """Test that UCSC rows are actually mapped."""
-        df = pd.DataFrame({
-            "transcript_id": ["NONCELT011856.2"],
-            "db_source": ["noncode"],
-            "assembly_accession": ["ce10"],
-            "organism": ["Caenorhabditis elegans"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["NONCELT011856.2"],
+                "db_source": ["noncode"],
+                "assembly_accession": ["ce10"],
+                "organism": ["Caenorhabditis elegans"],
+            }
+        )
 
         resolved, _ = filter_and_resolve_noncode(df)
 
@@ -187,12 +194,14 @@ class TestRowFiltering:
 
     def test_filter_non_ucsc_rows_unchanged(self):
         """Test that non-UCSC rows pass through unchanged."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["noncode", "noncode"],
-            "assembly_accession": ["GCF_000001405.40", "unknown_value"],
-            "organism": ["organism1", "organism2"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["noncode", "noncode"],
+                "assembly_accession": ["GCF_000001405.40", "unknown_value"],
+                "organism": ["organism1", "organism2"],
+            }
+        )
 
         resolved, _ = filter_and_resolve_noncode(df)
 
@@ -207,18 +216,20 @@ class TestResolvedVsUnresolvedSplit:
 
     def test_successful_mapping_goes_to_resolved(self):
         """Test that successfully mapped UCSC rows go to resolved output."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["noncode", "noncode"],
-            "assembly_accession": ["ce10", "dm6"],
-            "organism": ["Caenorhabditis elegans", "Drosophila melanogaster"],
-            "gene_id": ["G1", "G2"],
-            "gene_symbol": ["GENE1", "GENE2"],
-            "chrom": ["1", "2"],
-            "start": [100, 200],
-            "end": [200, 300],
-            "strand": ["+", "-"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["noncode", "noncode"],
+                "assembly_accession": ["ce10", "dm6"],
+                "organism": ["Caenorhabditis elegans", "Drosophila melanogaster"],
+                "gene_id": ["G1", "G2"],
+                "gene_symbol": ["GENE1", "GENE2"],
+                "chrom": ["1", "2"],
+                "start": [100, 200],
+                "end": [200, 300],
+                "strand": ["+", "-"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_noncode(df)
 
@@ -229,12 +240,14 @@ class TestResolvedVsUnresolvedSplit:
 
     def test_unmapped_ucsc_like_accession_fails_gracefully(self):
         """Test that UCSC-format names not in mapping are rejected."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["noncode"],
-            "assembly_accession": ["xx999"],  # Not in UCSC mapping
-            "organism": ["unknown"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["noncode"],
+                "assembly_accession": ["xx999"],  # Not in UCSC mapping
+                "organism": ["unknown"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_noncode(df)
 
@@ -247,18 +260,24 @@ class TestResolvedVsUnresolvedSplit:
 
     def test_mixed_rows_correct_split(self):
         """Test correct splitting when mix of mappable and non-UCSC rows."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2", "TX3"],
-            "db_source": ["noncode", "noncode", "noncode"],
-            "assembly_accession": ["ce10", "GCF_000001405.40", "dm6"],
-            "organism": ["Caenorhabditis elegans", "organism2", "Drosophila melanogaster"],
-            "gene_id": ["G1", "G2", "G3"],
-            "gene_symbol": ["GENE1", "GENE2", "GENE3"],
-            "chrom": ["1", "1", "1"],
-            "start": [100, 100, 100],
-            "end": [200, 200, 200],
-            "strand": ["+", "+", "+"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2", "TX3"],
+                "db_source": ["noncode", "noncode", "noncode"],
+                "assembly_accession": ["ce10", "GCF_000001405.40", "dm6"],
+                "organism": [
+                    "Caenorhabditis elegans",
+                    "organism2",
+                    "Drosophila melanogaster",
+                ],
+                "gene_id": ["G1", "G2", "G3"],
+                "gene_symbol": ["GENE1", "GENE2", "GENE3"],
+                "chrom": ["1", "1", "1"],
+                "start": [100, 100, 100],
+                "end": [200, 200, 200],
+                "strand": ["+", "+", "+"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_noncode(df)
 
@@ -272,19 +291,21 @@ class TestNonUCSCRowsPassThrough:
 
     def test_gcf_rows_unchanged(self):
         """Test that GCF_ accessions pass through without modification."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["noncode"],
-            "assembly_accession": ["GCF_000001405.40"],
-            "organism": ["organism1"],
-            "gene_id": ["GENE1"],
-            "gene_symbol": ["SYM1"],
-            "chrom": ["1"],
-            "start": [100],
-            "end": [200],
-            "strand": ["+"],
-            "is_ambiguous": [False],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["noncode"],
+                "assembly_accession": ["GCF_000001405.40"],
+                "organism": ["organism1"],
+                "gene_id": ["GENE1"],
+                "gene_symbol": ["SYM1"],
+                "chrom": ["1"],
+                "start": [100],
+                "end": [200],
+                "strand": ["+"],
+                "is_ambiguous": [False],
+            }
+        )
 
         resolved, _ = filter_and_resolve_noncode(df)
 
@@ -295,12 +316,14 @@ class TestNonUCSCRowsPassThrough:
 
     def test_unknown_accessions_unchanged(self):
         """Test that unknown accessions pass through unchanged."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["noncode"],
-            "assembly_accession": ["some_unknown_value"],
-            "organism": ["custom_organism"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["noncode"],
+                "assembly_accession": ["some_unknown_value"],
+                "organism": ["custom_organism"],
+            }
+        )
 
         resolved, _ = filter_and_resolve_noncode(df)
 
@@ -309,20 +332,22 @@ class TestNonUCSCRowsPassThrough:
 
     def test_all_columns_preserved_for_passthrough(self):
         """Test that all columns are preserved for pass-through rows."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["noncode"],
-            "assembly_accession": ["GCF_000001405.40"],
-            "organism": ["organism1"],
-            "gene_id": ["G1"],
-            "gene_symbol": ["SYM1"],
-            "chrom": ["1"],
-            "start": [100],
-            "end": [200],
-            "strand": ["+"],
-            "is_ambiguous": [False],
-            "custom_field": ["value1"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["noncode"],
+                "assembly_accession": ["GCF_000001405.40"],
+                "organism": ["organism1"],
+                "gene_id": ["G1"],
+                "gene_symbol": ["SYM1"],
+                "chrom": ["1"],
+                "start": [100],
+                "end": [200],
+                "strand": ["+"],
+                "is_ambiguous": [False],
+                "custom_field": ["value1"],
+            }
+        )
 
         resolved, _ = filter_and_resolve_noncode(df)
 
@@ -344,12 +369,14 @@ class TestEmptyAndEdgeCases:
 
     def test_dataframe_with_no_ucsc_rows(self):
         """Test dataframe containing no UCSC rows."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["noncode", "noncode"],
-            "assembly_accession": ["GCF_000001405.40", "GCA_000001405.1"],
-            "organism": ["organism1", "organism2"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["noncode", "noncode"],
+                "assembly_accession": ["GCF_000001405.40", "GCA_000001405.1"],
+                "organism": ["organism1", "organism2"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_noncode(df)
 
@@ -359,12 +386,14 @@ class TestEmptyAndEdgeCases:
 
     def test_dataframe_all_ucsc_mappable(self):
         """Test dataframe where all rows are UCSC and mappable."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["noncode", "noncode"],
-            "assembly_accession": ["ce10", "dm6"],
-            "organism": ["Caenorhabditis elegans", "Drosophila melanogaster"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["noncode", "noncode"],
+                "assembly_accession": ["ce10", "dm6"],
+                "organism": ["Caenorhabditis elegans", "Drosophila melanogaster"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_noncode(df)
 
@@ -373,11 +402,13 @@ class TestEmptyAndEdgeCases:
 
     def test_missing_assembly_accession_column(self):
         """Test handling of rows with missing assembly_accession column."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1"],
-            "db_source": ["noncode"],
-            "organism": ["organism1"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1"],
+                "db_source": ["noncode"],
+                "organism": ["organism1"],
+            }
+        )
 
         # Should handle gracefully
         try:
@@ -389,12 +420,14 @@ class TestEmptyAndEdgeCases:
 
     def test_null_assembly_accession_values(self):
         """Test handling of NaN/None in assembly_accession."""
-        df = pd.DataFrame({
-            "transcript_id": ["TX1", "TX2"],
-            "db_source": ["noncode", "noncode"],
-            "assembly_accession": [None, pd.NA],
-            "organism": ["organism1", "organism2"],
-        })
+        df = pd.DataFrame(
+            {
+                "transcript_id": ["TX1", "TX2"],
+                "db_source": ["noncode", "noncode"],
+                "assembly_accession": [None, pd.NA],
+                "organism": ["organism1", "organism2"],
+            }
+        )
 
         resolved, unresolved = filter_and_resolve_noncode(df)
 
@@ -409,8 +442,16 @@ class TestAllTenUCSCSpecies:
     def test_all_10_ucsc_names_present_in_mapping(self):
         """Test that all 10 UCSC names are in the mapping dictionary."""
         expected_names = [
-            "tair10", "ce10", "dm6", "rn6", "monDom5",
-            "ponAbe2", "galGal4", "ornAna1", "bosTau6", "danRer10"
+            "tair10",
+            "ce10",
+            "dm6",
+            "rn6",
+            "monDom5",
+            "ponAbe2",
+            "galGal4",
+            "ornAna1",
+            "bosTau6",
+            "danRer10",
         ]
         for name in expected_names:
             # Normalize and check
@@ -420,15 +461,15 @@ class TestAllTenUCSCSpecies:
     def test_all_10_species_resolve(self):
         """Test that all 10 UCSC species resolve to valid GCF_ accessions."""
         test_data = [
-            ("tair10", "GCF_000001735.4"),    # Arabidopsis thaliana (TAIR10.1)
-            ("ce10", "GCF_000002985.6"),      # Caenorhabditis elegans (WBcel235)
-            ("dm6", "GCF_000001215.4"),       # Drosophila melanogaster (Release 6)
-            ("rn6", "GCF_000001895.5"),       # Rattus norvegicus (Rnor_6.0)
-            ("monDom5", "GCF_000002295.2"),   # Monodelphis domesticus (MonDom5)
-            ("ponAbe2", "GCF_000001545.5"),   # Pongo abelii (P_pygmaeus_2.0.2)
-            ("galGal4", "GCF_000002315.6"),   # Gallus gallus (GRCg6a)
-            ("ornAna1", "GCF_000002275.2"),   # Ornithorhynchus anatinus (ASM227v2)
-            ("bosTau6", "GCF_000003055.6"),   # Bos taurus (Bos_taurus_UMD_3.1.1)
+            ("tair10", "GCF_000001735.4"),  # Arabidopsis thaliana (TAIR10.1)
+            ("ce10", "GCF_000002985.6"),  # Caenorhabditis elegans (WBcel235)
+            ("dm6", "GCF_000001215.4"),  # Drosophila melanogaster (Release 6)
+            ("rn6", "GCF_000001895.5"),  # Rattus norvegicus (Rnor_6.0)
+            ("monDom5", "GCF_000002295.2"),  # Monodelphis domesticus (MonDom5)
+            ("ponAbe2", "GCF_000001545.5"),  # Pongo abelii (P_pygmaeus_2.0.2)
+            ("galGal4", "GCF_000002315.6"),  # Gallus gallus (GRCg6a)
+            ("ornAna1", "GCF_000002275.2"),  # Ornithorhynchus anatinus (ASM227v2)
+            ("bosTau6", "GCF_000003055.6"),  # Bos taurus (Bos_taurus_UMD_3.1.1)
             ("danRer10", "GCF_000002035.6"),  # Danio rerio (GRCz11)
         ]
 

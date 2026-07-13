@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pandas as pd
-
 from cache_key_utils import build_cache_key_from_url
 
 
@@ -44,10 +43,12 @@ def build_download_manifest(df: pd.DataFrame) -> pd.DataFrame:
         else:
             keys.append(build_cache_key_from_url(str(eligible_url.loc[idx])))
 
-    manifest = pd.DataFrame({
-        "cache_key": keys,
-        "fasta_url": eligible_url.values,
-    })
+    manifest = pd.DataFrame(
+        {
+            "cache_key": keys,
+            "fasta_url": eligible_url.values,
+        }
+    )
 
     # Prefer entries that carry a direct URL when duplicate cache keys exist.
     manifest["_has_url"] = manifest["fasta_url"].notna()

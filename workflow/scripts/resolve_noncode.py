@@ -18,6 +18,7 @@ Outputs
 noncode_resolved.tsv   — RESOLVED_COLS schema
 noncode_unresolved.tsv — transcript_id, raw_header, source_file, reason
 """
+
 import gzip
 import re
 import sys
@@ -31,12 +32,12 @@ from logging_utils import get_logger  # type: ignore[import-untyped]
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("resolve_noncode", snakemake.log[0])  # type: ignore[name-defined]
 
-classified_path: str = snakemake.input.classified        # type: ignore[name-defined]
+classified_path: str = snakemake.input.classified  # type: ignore[name-defined]
 transcript2gene_path: str = snakemake.input.transcript2gene  # type: ignore[name-defined]
-bed_dir: str = snakemake.params.bed_dir                  # type: ignore[name-defined]
-fa_dir: str = snakemake.params.fa_dir                    # type: ignore[name-defined]
-out_resolved: str = snakemake.output.resolved            # type: ignore[name-defined]
-out_unresolved: str = snakemake.output.unresolved        # type: ignore[name-defined]
+bed_dir: str = snakemake.params.bed_dir  # type: ignore[name-defined]
+fa_dir: str = snakemake.params.fa_dir  # type: ignore[name-defined]
+out_resolved: str = snakemake.output.resolved  # type: ignore[name-defined]
+out_unresolved: str = snakemake.output.unresolved  # type: ignore[name-defined]
 
 # ── Schema ────────────────────────────────────────────────────
 RESOLVED_COLS = [
@@ -58,39 +59,39 @@ UNRESOLVED_COLS = ["transcript_id", "raw_header", "source_file", "reason"]
 # Keys are the 7-char NONCODE prefix (NON + 3-letter species code + T/G).
 # Values: (organism, assembly_accession, BED assembly suffix, FASTA species name)
 SPECIES_META: dict[str, tuple[str, str, str, str]] = {
-    "NONDMET": ("Drosophila melanogaster",   "dm6",      "dm6",      "fruitfly"),
-    "NONDMEG": ("Drosophila melanogaster",   "dm6",      "dm6",      "fruitfly"),
-    "NONCELT": ("Caenorhabditis elegans",    "ce10",     "ce10",     "celegans"),
-    "NONCELG": ("Caenorhabditis elegans",    "ce10",     "ce10",     "celegans"),
-    "NONDRET": ("Danio rerio",               "danRer10", "danRer10", "zebrafish"),
-    "NONDREG": ("Danio rerio",               "danRer10", "danRer10", "zebrafish"),
-    "NONGGAT": ("Gallus gallus",             "galGal4",  "galGal4",  "chicken"),
-    "NONGGAG": ("Gallus gallus",             "galGal4",  "galGal4",  "chicken"),
-    "NONMDOT": ("Monodelphis domestica",     "monDom5",  "monDom5",  "opossum"),
-    "NONMDOG": ("Monodelphis domestica",     "monDom5",  "monDom5",  "opossum"),
-    "NONOANT": ("Ornithorhynchus anatinus",  "ornAna1",  "ornAna1",  "platypus"),
-    "NONOANG": ("Ornithorhynchus anatinus",  "ornAna1",  "ornAna1",  "platypus"),
-    "NONPPYT": ("Pongo abelii",              "ponAbe2",  "ponAbe2",  "orangutan"),
-    "NONPPYG": ("Pongo abelii",              "ponAbe2",  "ponAbe2",  "orangutan"),
-    "NONRATT": ("Rattus norvegicus",         "rn6",      "rn6",      "rat"),
-    "NONRATG": ("Rattus norvegicus",         "rn6",      "rn6",      "rat"),
-    "NONATHT": ("Arabidopsis thaliana",      "tair10",   "tair10",   "arabidopsis"),
-    "NONATHG": ("Arabidopsis thaliana",      "tair10",   "tair10",   "arabidopsis"),
-    "NONBTAT": ("Bos taurus",               "bosTau6",  "bosTau6",  "cow"),
-    "NONBTAG": ("Bos taurus",               "bosTau6",  "bosTau6",  "cow"),
+    "NONDMET": ("Drosophila melanogaster", "dm6", "dm6", "fruitfly"),
+    "NONDMEG": ("Drosophila melanogaster", "dm6", "dm6", "fruitfly"),
+    "NONCELT": ("Caenorhabditis elegans", "ce10", "ce10", "celegans"),
+    "NONCELG": ("Caenorhabditis elegans", "ce10", "ce10", "celegans"),
+    "NONDRET": ("Danio rerio", "danRer10", "danRer10", "zebrafish"),
+    "NONDREG": ("Danio rerio", "danRer10", "danRer10", "zebrafish"),
+    "NONGGAT": ("Gallus gallus", "galGal4", "galGal4", "chicken"),
+    "NONGGAG": ("Gallus gallus", "galGal4", "galGal4", "chicken"),
+    "NONMDOT": ("Monodelphis domestica", "monDom5", "monDom5", "opossum"),
+    "NONMDOG": ("Monodelphis domestica", "monDom5", "monDom5", "opossum"),
+    "NONOANT": ("Ornithorhynchus anatinus", "ornAna1", "ornAna1", "platypus"),
+    "NONOANG": ("Ornithorhynchus anatinus", "ornAna1", "ornAna1", "platypus"),
+    "NONPPYT": ("Pongo abelii", "ponAbe2", "ponAbe2", "orangutan"),
+    "NONPPYG": ("Pongo abelii", "ponAbe2", "ponAbe2", "orangutan"),
+    "NONRATT": ("Rattus norvegicus", "rn6", "rn6", "rat"),
+    "NONRATG": ("Rattus norvegicus", "rn6", "rn6", "rat"),
+    "NONATHT": ("Arabidopsis thaliana", "tair10", "tair10", "arabidopsis"),
+    "NONATHG": ("Arabidopsis thaliana", "tair10", "tair10", "arabidopsis"),
+    "NONBTAT": ("Bos taurus", "bosTau6", "bosTau6", "cow"),
+    "NONBTAG": ("Bos taurus", "bosTau6", "bosTau6", "cow"),
     # Human / Mouse / Chimp / Gorilla / Rhesus / Pig (if they appear)
-    "NONHSAT": ("Homo sapiens",             "hg38",     "hg38",     "human"),
-    "NONHSAG": ("Homo sapiens",             "hg38",     "hg38",     "human"),
-    "NONMMUT": ("Mus musculus",             "mm10",     "mm10",     "mouse"),
-    "NONMMUG": ("Mus musculus",             "mm10",     "mm10",     "mouse"),
-    "NONPTRT": ("Pan troglodytes",          "panTro4",  "panTro4",  "chimp"),
-    "NONPTRG": ("Pan troglodytes",          "panTro4",  "panTro4",  "chimp"),
-    "NONGGOT": ("Gorilla gorilla",          "gorGor3",  "gorGor3",  "gorilla"),
-    "NONGROG": ("Gorilla gorilla",          "gorGor3",  "gorGor3",  "gorilla"),
-    "NONMMLT": ("Macaca mulatta",           "rheMac3",  "rheMac3",  "rhesus"),
-    "NONMMLG": ("Macaca mulatta",           "rheMac3",  "rheMac3",  "rhesus"),
-    "NONSSCG": ("Sus scrofa",               "susScr3",  "susScr3",  "pig"),
-    "NONSSCT": ("Sus scrofa",               "susScr3",  "susScr3",  "pig"),
+    "NONHSAT": ("Homo sapiens", "hg38", "hg38", "human"),
+    "NONHSAG": ("Homo sapiens", "hg38", "hg38", "human"),
+    "NONMMUT": ("Mus musculus", "mm10", "mm10", "mouse"),
+    "NONMMUG": ("Mus musculus", "mm10", "mm10", "mouse"),
+    "NONPTRT": ("Pan troglodytes", "panTro4", "panTro4", "chimp"),
+    "NONPTRG": ("Pan troglodytes", "panTro4", "panTro4", "chimp"),
+    "NONGGOT": ("Gorilla gorilla", "gorGor3", "gorGor3", "gorilla"),
+    "NONGROG": ("Gorilla gorilla", "gorGor3", "gorGor3", "gorilla"),
+    "NONMMLT": ("Macaca mulatta", "rheMac3", "rheMac3", "rhesus"),
+    "NONMMLG": ("Macaca mulatta", "rheMac3", "rheMac3", "rhesus"),
+    "NONSSCG": ("Sus scrofa", "susScr3", "susScr3", "pig"),
+    "NONSSCT": ("Sus scrofa", "susScr3", "susScr3", "pig"),
 }
 
 _NON_PREFIX_RE = re.compile(r"^(NON[A-Z]{3}[TG])\d+\.\d+$")
@@ -207,16 +208,24 @@ for _, row in df_nc.iterrows():
     prefix = _noncode_prefix(tid)
     if prefix is None:
         unresolved_rows.append(
-            {"transcript_id": tid, "raw_header": raw_header,
-             "source_file": source_file, "reason": "invalid_noncode_format"}
+            {
+                "transcript_id": tid,
+                "raw_header": raw_header,
+                "source_file": source_file,
+                "reason": "invalid_noncode_format",
+            }
         )
         continue
 
     meta = SPECIES_META.get(prefix)
     if meta is None:
         unresolved_rows.append(
-            {"transcript_id": tid, "raw_header": raw_header,
-             "source_file": source_file, "reason": f"unknown_noncode_prefix:{prefix}"}
+            {
+                "transcript_id": tid,
+                "raw_header": raw_header,
+                "source_file": source_file,
+                "reason": f"unknown_noncode_prefix:{prefix}",
+            }
         )
         continue
 
@@ -246,30 +255,42 @@ for _, row in df_nc.iterrows():
             log.debug(f"  {tid}: in v5 FASTA but no BED coords — coordinates NA")
         else:
             unresolved_rows.append(
-                {"transcript_id": tid, "raw_header": raw_header,
-                 "source_file": source_file, "reason": "not_found_in_noncode_v5"}
+                {
+                    "transcript_id": tid,
+                    "raw_header": raw_header,
+                    "source_file": source_file,
+                    "reason": "not_found_in_noncode_v5",
+                }
             )
             continue
 
     resolved_rows.append(
         {
-            "transcript_id":      tid,
-            "db_source":          "noncode",
-            "gene_id":            gene_id if gene_id else base_id,
-            "gene_symbol":        gene_id if gene_id else base_id,
-            "organism":           organism,
+            "transcript_id": tid,
+            "db_source": "noncode",
+            "gene_id": gene_id if gene_id else base_id,
+            "gene_symbol": gene_id if gene_id else base_id,
+            "organism": organism,
             "assembly_accession": assembly,
-            "chrom":              chrom,
-            "start":              start,
-            "end":                end,
-            "strand":             strand,
-            "is_ambiguous":       False,
+            "chrom": chrom,
+            "start": start,
+            "end": end,
+            "strand": strand,
+            "is_ambiguous": False,
         }
     )
 
 # ── Write outputs ─────────────────────────────────────────────
-df_resolved = pd.DataFrame(resolved_rows, columns=RESOLVED_COLS) if resolved_rows else pd.DataFrame(columns=RESOLVED_COLS)
-df_unresolved = pd.DataFrame(unresolved_rows, columns=UNRESOLVED_COLS) if unresolved_rows else pd.DataFrame(columns=UNRESOLVED_COLS)
+df_resolved = (
+    pd.DataFrame(resolved_rows, columns=RESOLVED_COLS)
+    if resolved_rows
+    else pd.DataFrame(columns=RESOLVED_COLS)
+)
+df_unresolved = (
+    pd.DataFrame(unresolved_rows, columns=UNRESOLVED_COLS)
+    if unresolved_rows
+    else pd.DataFrame(columns=UNRESOLVED_COLS)
+)
 
 df_resolved.to_csv(out_resolved, sep="\t", index=False)
 df_unresolved.to_csv(out_unresolved, sep="\t", index=False)

@@ -116,5 +116,3 @@ plant_gtf_sources:
     fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/selaginella_moellendorffii/dna/Selaginella_moellendorffii.v1.0.dna.toplevel.fa.gz"
     gtf_format: "gtf"
     release: "60"
-
-

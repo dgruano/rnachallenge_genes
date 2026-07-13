@@ -39,6 +39,7 @@ SPECIES_TO_DATASET = {
     "vitis_vinifera": "vvinifera_eg_gene",
 }
 
+
 def build_biomart_query(dataset: str) -> str:
     """Build BioMart XML query for transcript metadata."""
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -55,43 +56,49 @@ def build_biomart_query(dataset: str) -> str:
     </Dataset>
 </Query>"""
 
+
 def download_biomart_table(dataset: str) -> pd.DataFrame:
     """Download metadata table from BioMart with retries."""
     query = build_biomart_query(dataset)
-    
+
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            log.info(f"Querying BioMart for {dataset} (attempt {attempt}/{MAX_RETRIES})")
+            log.info(
+                f"Querying BioMart for {dataset} (attempt {attempt}/{MAX_RETRIES})"
+            )
             response = requests.post(
                 BIOMART_URL,
                 data={"query": query},
                 timeout=300,  # 5 minutes
             )
-            
+
             if response.status_code == 200:
                 # Parse TSV response
                 lines = response.text.strip().split("\n")
                 if len(lines) < 2:
                     log.error(f"Empty response from BioMart for {dataset}")
                     return pd.DataFrame()
-                
+
                 # Header is first line
                 header = lines[0].split("\t")
                 data = [line.split("\t") for line in lines[1:]]
-                
+
                 df = pd.DataFrame(data, columns=header)
                 log.info(f"Downloaded {len(df)} records from BioMart")
                 return df
             else:
-                log.warning(f"BioMart request failed with status {response.status_code}")
-                
+                log.warning(
+                    f"BioMart request failed with status {response.status_code}"
+                )
+
         except Exception as exc:
             log.warning(f"BioMart request attempt {attempt} failed: {exc}")
-        
+
         if attempt < MAX_RETRIES:
             time.sleep(RETRY_WAIT * attempt)
-    
+
     return pd.DataFrame()
+
 
 def normalize_strand(value: str) -> str:
     """Normalize strand to +/-/."""
@@ -102,11 +109,14 @@ def normalize_strand(value: str) -> str:
     else:
         return "."
 
+
 # ── Main ─────────────────────────────────────────────────────
 log.info(f"Downloading metadata table for {species}")
 
 if species not in SPECIES_TO_DATASET:
-    log.error(f"Unknown species {species}. Supported: {', '.join(SPECIES_TO_DATASET.keys())}")
+    log.error(
+        f"Unknown species {species}. Supported: {', '.join(SPECIES_TO_DATASET.keys())}"
+    )
     sys.exit(1)
 
 dataset = SPECIES_TO_DATASET[species]
@@ -134,7 +144,15 @@ if "gene_symbol" in df.columns:
     df["gene_symbol"] = df["gene_symbol"].fillna(df["gene_id"])
 
 # Ensure all required columns exist
-required_cols = ["transcript_id", "gene_id", "gene_symbol", "chrom", "start", "end", "strand"]
+required_cols = [
+    "transcript_id",
+    "gene_id",
+    "gene_symbol",
+    "chrom",
+    "start",
+    "end",
+    "strand",
+]
 missing = set(required_cols) - set(df.columns)
 if missing:
     log.error(f"Missing columns after renaming: {', '.join(missing)}")
@@ -142,13 +160,24 @@ if missing:
     sys.exit(1)
 
 # Add assembly_accession (we'll use the species name for now, or could query separately)
-df["assembly_accession"] = "EnsemblPlants"  # Placeholder - ideally we'd get the actual assembly name
+df["assembly_accession"] = (
+    "EnsemblPlants"  # Placeholder - ideally we'd get the actual assembly name
+)
 
 # Normalize strand
 df["strand"] = df["strand"].astype(str).apply(normalize_strand)
 
 # Select and reorder columns
-output_cols = ["transcript_id", "gene_id", "gene_symbol", "assembly_accession", "chrom", "start", "end", "strand"]
+output_cols = [
+    "transcript_id",
+    "gene_id",
+    "gene_symbol",
+    "assembly_accession",
+    "chrom",
+    "start",
+    "end",
+    "strand",
+]
 df = df[output_cols]
 
 # Remove rows with missing critical info

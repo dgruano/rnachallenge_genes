@@ -71,7 +71,9 @@ def main(snakemake):
     if source_path:
         source = Path(source_path)
         if not source.exists():
-            raise WorkflowError(f"Configured/local Phytozome source missing for {species}: {source}")
+            raise WorkflowError(
+                f"Configured/local Phytozome source missing for {species}: {source}"
+            )
         if source.resolve() != output_path.resolve():
             shutil.copyfile(source, output_path)
         else:
@@ -117,7 +119,12 @@ def main(snakemake):
 
     # No genome_id to check live status with: honor the stale PURGED snapshot
     # so we emit a clear "restore it" message instead of a raw download error.
-    if genome_id is None and stale_status in {"PURGED", "COLD", "COLD_STORAGE", "ARCHIVED"}:
+    if genome_id is None and stale_status in {
+        "PURGED",
+        "COLD",
+        "COLD_STORAGE",
+        "ARCHIVED",
+    }:
         raise WorkflowError(
             f"Phytozome file for {species} is not downloadable (manifest "
             f"status={stale_status}) and has no genome_id to resolve a live "
@@ -133,12 +140,18 @@ def main(snakemake):
             f"or an explicit download_url/url"
         )
 
-    request = urllib.request.Request(download_url, headers={"Authorization": f"Bearer {token}"})
+    request = urllib.request.Request(
+        download_url, headers={"Authorization": f"Bearer {token}"}
+    )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response, output_path.open("wb") as out_fh:
+        with urllib.request.urlopen(request, timeout=120) as response, output_path.open(
+            "wb"
+        ) as out_fh:
             shutil.copyfileobj(response, out_fh)
     except Exception as exc:
-        raise WorkflowError(f"Failed to download Phytozome GFF3 for {species}: {exc}") from exc
+        raise WorkflowError(
+            f"Failed to download Phytozome GFF3 for {species}: {exc}"
+        ) from exc
 
     log_path.write_text(f"downloaded {species} from {download_url}\n")
 

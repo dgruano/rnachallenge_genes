@@ -33,11 +33,13 @@ def test_stale_purged_with_genome_id_fires_live_restore(tmp_path, monkeypatch):
     """Stale PURGED + a genome_id → reach the live path and fire a restore."""
     calls = {}
     monkeypatch.setattr(
-        dl, "resolve_annotation",
+        dl,
+        "resolve_annotation",
         lambda gid, tok, prefer_name=None: {"_id": "abc", "file_status": "PURGED"},
     )
     monkeypatch.setattr(
-        dl, "request_restore",
+        dl,
+        "request_restore",
         lambda ids, tok: calls.setdefault("restore", ids) or "queued",
     )
     monkeypatch.setattr(dl, "load_token", lambda: "tok")
@@ -52,7 +54,9 @@ def test_stale_purged_with_genome_id_fires_live_restore(tmp_path, monkeypatch):
     assert calls["restore"] == "abc"  # live restore actually fired
 
 
-def test_missing_manifest_entry_falls_through_to_config_genome_id(tmp_path, monkeypatch):
+def test_missing_manifest_entry_falls_through_to_config_genome_id(
+    tmp_path, monkeypatch
+):
     """Species absent from manifest but present in config → resolve via config
     genome_id instead of hard-failing (the manifest only pins portal_file_name)."""
     seen = {}
@@ -63,6 +67,7 @@ def test_missing_manifest_entry_falls_through_to_config_genome_id(tmp_path, monk
         return {"_id": "x", "file_status": "RESTORED", "download_url": "http://x"}
 
     monkeypatch.setattr(dl, "resolve_annotation", fake_resolve)
+
     def no_network(*a, **k):
         raise RuntimeError("stub: reached download")
 
@@ -87,7 +92,8 @@ def test_stale_purged_without_genome_id_reports_clearly(tmp_path, monkeypatch):
     """Stale PURGED + no genome_id → clean message, no restore attempted."""
     monkeypatch.setattr(dl, "load_token", lambda: "tok")
     monkeypatch.setattr(
-        dl, "request_restore",
+        dl,
+        "request_restore",
         lambda *a, **k: pytest.fail("should not fire restore without genome_id"),
     )
     sm = _snakemake(tmp_path, {"status": "PURGED"}, config={})

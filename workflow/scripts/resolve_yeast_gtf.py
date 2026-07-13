@@ -54,19 +54,19 @@ from utils.annotation_resolver import (
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("resolve_yeast_gtf", snakemake.log[0])
 
-input_tsv      = snakemake.input.classified   # classified_ids.tsv
-gff_file       = snakemake.input.gff
-out_resolved   = snakemake.output.resolved
+input_tsv = snakemake.input.classified  # classified_ids.tsv
+gff_file = snakemake.input.gff
+out_resolved = snakemake.output.resolved
 out_unresolved = snakemake.output.unresolved
 
 cfg = snakemake.config
-_YEAST_SRC        = cfg.get("yeast_gtf_sources", {}).get("saccharomyces_cerevisiae", {})
-ASSEMBLY_NAME     = _YEAST_SRC.get("assembly_name", "R64")
+_YEAST_SRC = cfg.get("yeast_gtf_sources", {}).get("saccharomyces_cerevisiae", {})
+ASSEMBLY_NAME = _YEAST_SRC.get("assembly_name", "R64")
 ASSEMBLY_ACCESSION = _YEAST_SRC.get("assembly_accession")
-FASTA_URL         = _YEAST_SRC.get("fasta_url")
-GTF_URL           = _YEAST_SRC.get("url")
-GTF_FORMAT        = _YEAST_SRC.get("gtf_format", "gff3")
-ORGANISM          = "saccharomyces_cerevisiae"
+FASTA_URL = _YEAST_SRC.get("fasta_url")
+GTF_URL = _YEAST_SRC.get("url")
+GTF_FORMAT = _YEAST_SRC.get("gtf_format", "gff3")
+ORGANISM = "saccharomyces_cerevisiae"
 
 # Feature types in the SGD GFF3 that represent gene-level entries
 _GENE_TYPES = {
@@ -116,7 +116,7 @@ res_df, unres_out = resolve_classified_ids(
     unresolved_reason="sgd_gtf_not_resolved",
 )
 
-res_df.to_csv(out_resolved,   sep="\t", index=False)
+res_df.to_csv(out_resolved, sep="\t", index=False)
 unres_out.to_csv(out_unresolved, sep="\t", index=False)
 
 log.info("=" * 60)

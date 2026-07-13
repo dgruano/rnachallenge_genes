@@ -15,13 +15,14 @@ Features:
   - Logs detailed progress and statistics
 """
 
+import gzip
 import sys
 import time
-import gzip
 from pathlib import Path
 from typing import Optional
-import requests
+
 import pandas as pd
+import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
@@ -120,36 +121,36 @@ BIOMART_ATTRIBUTES = [
 
 # ── Helper functions ──────────────────────────────────────────
 
+
 def escape_xml(text: str) -> str:
     """Escape special characters for XML attributes."""
-    return (text
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;"))
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
 
 
 def build_biomart_query(dataset: str, attributes: list) -> str:
     """
     Build BioMart XML query to fetch all transcripts for a species.
-    
+
     Parameters
     ----------
     dataset : str
         BioMart dataset name (e.g., "hsapiens_gene_ensembl")
     attributes : list
         List of attribute names to fetch (e.g., "ensembl_transcript_id")
-    
+
     Returns
     -------
     str
         XML query string
     """
-    attr_xml = "\n        ".join(
-        f'<Attribute name="{attr}" />' for attr in attributes
-    )
-    
+    attr_xml = "\n        ".join(f'<Attribute name="{attr}" />' for attr in attributes)
+
     query = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE Query>
 <Query virtualSchemaName="default" formatter="TSV" header="1" uniqueRows="1" count="" datasetConfigVersion="0.6">
@@ -157,14 +158,16 @@ def build_biomart_query(dataset: str, attributes: list) -> str:
         {attr_xml}
     </Dataset>
 </Query>"""
-    
+
     return query
 
 
-def query_biomart(dataset: str, attributes: list, max_retries: int = 3, retry_wait: int = 5) -> pd.DataFrame:
+def query_biomart(
+    dataset: str, attributes: list, max_retries: int = 3, retry_wait: int = 5
+) -> pd.DataFrame:
     """
     Query Ensembl BioMart for all transcripts of a given species.
-    
+
     Parameters
     ----------
     dataset : str
@@ -175,42 +178,46 @@ def query_biomart(dataset: str, attributes: list, max_retries: int = 3, retry_wa
         Number of retry attempts on network failure
     retry_wait : int
         Seconds to wait between retries (with exponential backoff)
-    
+
     Returns
     -------
     pd.DataFrame
         Query results with transcript data
     """
     query = build_biomart_query(dataset, attributes)
-    
+
     for attempt in range(1, max_retries + 1):
         try:
             log.info(f"Querying BioMart {dataset} (attempt {attempt}/{max_retries})")
-            
+
             response = requests.post(
                 BIOMART_URL,
                 data={"query": query},
                 timeout=300,  # 5-minute timeout for large queries
             )
-            
+
             if response.status_code == 200:
                 # Parse TSV response
                 lines = response.text.strip().split("\n")
-                
+
                 if len(lines) < 2:
-                    log.warning(f"BioMart returned empty result (only {len(lines)} lines)")
+                    log.warning(
+                        f"BioMart returned empty result (only {len(lines)} lines)"
+                    )
                     if attempt < max_retries:
                         wait_time = retry_wait * (2 ** (attempt - 1))
                         log.info(f"Retrying in {wait_time} seconds...")
                         time.sleep(wait_time)
                         continue
                     else:
-                        raise RuntimeError("BioMart query returned no data after all retries")
-                
+                        raise RuntimeError(
+                            "BioMart query returned no data after all retries"
+                        )
+
                 # Parse header and data
                 header = lines[0].split("\t")
                 data = [line.split("\t") for line in lines[1:] if line.strip()]
-                
+
                 if not data:
                     log.warning("BioMart returned only header, no data rows")
                     if attempt < max_retries:
@@ -219,17 +226,21 @@ def query_biomart(dataset: str, attributes: list, max_retries: int = 3, retry_wa
                         time.sleep(wait_time)
                         continue
                     else:
-                        raise RuntimeError("BioMart query returned no data rows after all retries")
-                
+                        raise RuntimeError(
+                            "BioMart query returned no data rows after all retries"
+                        )
+
                 df = pd.DataFrame(data, columns=header)
-                log.info(f"BioMart query successful: fetched {len(df)} transcript records")
+                log.info(
+                    f"BioMart query successful: fetched {len(df)} transcript records"
+                )
                 return df
-                
+
             else:
                 log.warning(f"BioMart returned HTTP {response.status_code}")
                 if response.text:
                     log.debug(f"Response body: {response.text[:500]}")
-                
+
                 if attempt < max_retries:
                     wait_time = retry_wait * (2 ** (attempt - 1))
                     log.info(f"Retrying in {wait_time} seconds...")
@@ -237,7 +248,7 @@ def query_biomart(dataset: str, attributes: list, max_retries: int = 3, retry_wa
                     continue
                 else:
                     raise RuntimeError(f"BioMart returned HTTP {response.status_code}")
-        
+
         except requests.exceptions.Timeout:
             log.error(f"BioMart query timed out (attempt {attempt}/{max_retries})")
             if attempt < max_retries:
@@ -247,32 +258,40 @@ def query_biomart(dataset: str, attributes: list, max_retries: int = 3, retry_wa
                 continue
             else:
                 raise RuntimeError("BioMart query timed out after all retries")
-        
+
         except requests.exceptions.ConnectionError as exc:
-            log.error(f"Connection error to BioMart (attempt {attempt}/{max_retries}): {exc}")
+            log.error(
+                f"Connection error to BioMart (attempt {attempt}/{max_retries}): {exc}"
+            )
             if attempt < max_retries:
                 wait_time = retry_wait * (2 ** (attempt - 1))
                 log.info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
                 continue
             else:
-                raise RuntimeError(f"Could not connect to BioMart after {max_retries} attempts")
-        
+                raise RuntimeError(
+                    f"Could not connect to BioMart after {max_retries} attempts"
+                )
+
         except Exception as exc:
-            log.error(f"Unexpected error during BioMart query (attempt {attempt}/{max_retries}): {exc}")
+            log.error(
+                f"Unexpected error during BioMart query (attempt {attempt}/{max_retries}): {exc}"
+            )
             if attempt < max_retries:
                 wait_time = retry_wait * (2 ** (attempt - 1))
                 log.info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
                 continue
             else:
-                raise RuntimeError(f"BioMart query failed after {max_retries} attempts: {exc}")
+                raise RuntimeError(
+                    f"BioMart query failed after {max_retries} attempts: {exc}"
+                )
 
 
 def write_gzipped_tsv(df: pd.DataFrame, output_path: str) -> None:
     """
     Write DataFrame to gzipped TSV file.
-    
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -282,23 +301,24 @@ def write_gzipped_tsv(df: pd.DataFrame, output_path: str) -> None:
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Write to temporary uncompressed file first
     temp_path = output_path.with_suffix(".tsv")
     df.to_csv(temp_path, sep="\t", index=False)
-    
+
     # Compress to .gz
     with open(temp_path, "rb") as f_in:
         with gzip.open(output_path, "wb") as f_out:
             f_out.writelines(f_in)
-    
+
     # Clean up temporary file
     temp_path.unlink()
-    
+
     log.info(f"Wrote {len(df)} rows to {output_path}")
 
 
 # ── Main ────────────────────────────────────────────────────────
+
 
 def main():
     """Main entry point."""
@@ -306,16 +326,16 @@ def main():
     log.info(f"Species: {species}")
     log.info(f"Release: {release}")
     log.info(f"Output: {output_file}")
-    
+
     # Validate species
     if species not in SPECIES_TO_DATASET:
         log.error(f"Unknown species: {species}")
         log.error(f"Supported species: {', '.join(sorted(SPECIES_TO_DATASET.keys()))}")
         raise ValueError(f"Unknown species: {species}")
-    
+
     dataset = SPECIES_TO_DATASET[species]
     log.info(f"Dataset: {dataset}")
-    
+
     # Query BioMart
     try:
         df = query_biomart(dataset, BIOMART_ATTRIBUTES, max_retries, retry_wait)
@@ -331,39 +351,41 @@ def main():
     # Validate results
     if df.empty:
         if on_failure == "warn_continue":
-            log.warning("BioMart query returned no data (development mode: continuing with empty output)")
+            log.warning(
+                "BioMart query returned no data (development mode: continuing with empty output)"
+            )
         else:
             log.error("BioMart query returned no data")
             raise RuntimeError("BioMart query returned no data")
-    
+
     log.info(f"Fetched {len(df)} transcripts for {species}")
-    
+
     # Check for expected columns
     expected_cols = set(BIOMART_ATTRIBUTES)
     actual_cols = set(df.columns)
     missing_cols = expected_cols - actual_cols
-    
+
     if missing_cols:
         log.warning(f"Missing columns in BioMart response: {missing_cols}")
         log.warning(f"Available columns: {list(actual_cols)}")
         # Don't fail here; downstream rules may tolerate missing columns
-    
+
     # Summary statistics
     log.info(f"Column count: {len(df.columns)}")
     log.info(f"Row count: {len(df)}")
-    
+
     # Sample of data
     log.debug(f"Sample rows:\n{df.head(3).to_string()}")
-    
+
     # Write output
     try:
         write_gzipped_tsv(df, output_file)
     except Exception as exc:
         log.error(f"Failed to write output file: {exc}")
         raise
-    
+
     log.info(f"=== Download complete ===")
-    
+
 
 if __name__ == "__main__":
     try:

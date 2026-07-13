@@ -15,13 +15,13 @@ MAX_STALLS=3  # Stop if no progress for 15 minutes (3 × 5min checks)
 
 while true; do
     sleep $CHECK_INTERVAL
-    
+
     echo "--- Check at $(date) ---" >> "$MONITOR_LOG"
-    
+
     # Check if Snakemake process is still running
     if ! pgrep -f "snakemake.*resolve_external_ids" > /dev/null; then
         echo "Snakemake process not found - job may have completed or crashed" >> "$MONITOR_LOG"
-        
+
         # Check if output files exist
         if [ -f "results/external_resolved.tsv" ] && \
            [ -f "results/external_ambiguous.tsv" ] && \
@@ -39,20 +39,20 @@ while true; do
             exit 1
         fi
     fi
-    
+
     # Get latest progress
     current_progress=$(tail -5 "$LOG_FILE" | grep "Progress:" | tail -1)
-    
+
     if [ -z "$current_progress" ]; then
         echo "WARNING: No progress line found in log" >> "$MONITOR_LOG"
     else
         echo "Current: $current_progress" >> "$MONITOR_LOG"
-        
+
         # Check for stall (same progress as last check)
         if [ "$current_progress" == "$last_progress" ]; then
             ((stall_count++))
             echo "WARNING: No progress change detected (stall count: $stall_count/$MAX_STALLS)" >> "$MONITOR_LOG"
-            
+
             if [ $stall_count -ge $MAX_STALLS ]; then
                 echo "ERROR: Process appears stalled - no progress for $((MAX_STALLS * CHECK_INTERVAL / 60)) minutes" >> "$MONITOR_LOG"
                 echo "Killing stalled processes..." >> "$MONITOR_LOG"
@@ -65,10 +65,10 @@ while true; do
         else
             stall_count=0
         fi
-        
+
         last_progress="$current_progress"
     fi
-    
+
     # Check for ERROR or WARNING in recent log lines
     if tail -20 "$LOG_FILE" | grep -iE "ERROR|Exception|Traceback" > /dev/null; then
         echo "ERROR detected in log file:" >> "$MONITOR_LOG"
@@ -78,7 +78,7 @@ while true; do
         pkill -f "resolve_external_ids.py"
         exit 1
     fi
-    
+
     # Log warnings but don't stop (REST API warnings are expected)
     warning_count=$(tail -100 "$LOG_FILE" | grep -c "WARNING")
     if [ "$warning_count" -gt 0 ]; then

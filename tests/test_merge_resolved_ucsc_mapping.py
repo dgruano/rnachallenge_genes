@@ -13,7 +13,7 @@ import pytest
 SCRIPT_DIR = Path(__file__).parent.parent / "workflow" / "scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from ncbi_assembly_utils import apply_ucsc_to_gcf_mapping, EXTENDED_UCSC_TO_GCF
+from ncbi_assembly_utils import EXTENDED_UCSC_TO_GCF, apply_ucsc_to_gcf_mapping
 
 
 class TestExtendedUCSCMapping:
@@ -40,11 +40,13 @@ class TestExtendedUCSCMapping:
 class TestApplyUCSCToGCFMapping:
 
     def _make_frame(self, assembly_values: list[str]) -> pd.DataFrame:
-        return pd.DataFrame({
-            "transcript_id": [f"TX{i}" for i in range(len(assembly_values))],
-            "assembly_accession": assembly_values,
-            "db_source": ["noncode_v4"] * len(assembly_values),
-        })
+        return pd.DataFrame(
+            {
+                "transcript_id": [f"TX{i}" for i in range(len(assembly_values))],
+                "assembly_accession": assembly_values,
+                "db_source": ["noncode_v4"] * len(assembly_values),
+            }
+        )
 
     def test_ucsc_name_replaced_with_gcf(self):
         df = self._make_frame(["ce10", "dm6"])

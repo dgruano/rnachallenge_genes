@@ -45,8 +45,8 @@ from Bio.SeqRecord import SeqRecord
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-_FETCH_DB = "nucleotide"       # efetch accepts "nucleotide" or "nuccore"
-_POST_DB = "nuccore"           # epost uses "nuccore"
+_FETCH_DB = "nucleotide"  # efetch accepts "nucleotide" or "nuccore"
+_POST_DB = "nuccore"  # epost uses "nuccore"
 _GENE_FEATURE_TYPES = {"gene", "mRNA", "CDS"}
 _OUTPUT_COLS = [
     "accession",
@@ -211,8 +211,12 @@ class NCBIGenBankFetcher:
         # This is the only reliable way to know how many records NCBI matched,
         # since withdrawn/suppressed IDs silently reduce the history set size.
         count_handle = Entrez.esearch(
-            db=_POST_DB, term="", usehistory="y",
-            webenv=webenv, query_key=query_key, retmax=0,
+            db=_POST_DB,
+            term="",
+            usehistory="y",
+            webenv=webenv,
+            query_key=query_key,
+            retmax=0,
         )
         count_res = Entrez.read(count_handle)
         count_handle.close()
@@ -391,9 +395,11 @@ if __name__ == "__main__":
 
         email = os.environ.get("NCBI_EMAIL", "test@example.com")
         fetcher = NCBIGenBankFetcher(email=email, batch_size=500)
-        test_accs = ["NM_007294.4", "NM_000546.6"]   # BRCA1, TP53 — stable records
+        test_accs = ["NM_007294.4", "NM_000546.6"]  # BRCA1, TP53 — stable records
         df = fetcher.fetch(test_accs)
-        assert len(df) == len(test_accs), f"Expected {len(test_accs)} rows, got {len(df)}"
+        assert len(df) == len(
+            test_accs
+        ), f"Expected {len(test_accs)} rows, got {len(df)}"
         assert "gene_id" in df.columns
         assert "gene_symbol" in df.columns
         assert df["gene_id"].ne("WITHDRAWN").any(), "All records were marked WITHDRAWN"

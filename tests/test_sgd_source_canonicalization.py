@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "workflow"))
 sys.path.insert(0, str(ROOT / "workflow" / "scripts"))
 
-from utils.annotation_resolver import yeast_candidates, build_annotation_index
+from utils.annotation_resolver import build_annotation_index, yeast_candidates
 
 # One real gene line from the SGD GFF3 (YJL127C-B / MCO6 / SGD:S000028522).
 _GFF_LINE = (
@@ -47,7 +47,14 @@ class TestSourceTagResolvesAgainstIndex:
             alias_fields=("Alias", "dbxref"),
         )
         # The canonicalized candidate must land on a real record.
-        hit = next((index[c] for c in yeast_candidates("Source:SGD;Acc:S000028522") if c in index), None)
+        hit = next(
+            (
+                index[c]
+                for c in yeast_candidates("Source:SGD;Acc:S000028522")
+                if c in index
+            ),
+            None,
+        )
         assert hit is not None
         assert hit["chrom"] == "chrX"
         assert hit["start"] == 181275

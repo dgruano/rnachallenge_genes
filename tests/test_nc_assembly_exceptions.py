@@ -24,7 +24,9 @@ class TestNCExceptionMap:
         assert NC_TO_ASSEMBLY_EXCEPTIONS["NC_008405.2"] == "GCF_000005425.2"
 
     def test_all_twelve_rice_chromosomes_present(self):
-        chrom_accs = [f"NC_0083{n:02d}.{'4' if n == 94 else '2'}" for n in range(94, 100)]
+        chrom_accs = [
+            f"NC_0083{n:02d}.{'4' if n == 94 else '2'}" for n in range(94, 100)
+        ]
         chrom_accs += [f"NC_0084{n:02d}.2" for n in range(0, 6)]
         for acc in chrom_accs:
             assert acc in NC_TO_ASSEMBLY_EXCEPTIONS, acc

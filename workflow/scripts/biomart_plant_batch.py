@@ -24,14 +24,14 @@ from logging_utils import get_logger
 
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("biomart_plant_batch", snakemake.log[0])
-input_tsv    = snakemake.input.unresolved
-out_resolved   = snakemake.output.resolved
+input_tsv = snakemake.input.unresolved
+out_resolved = snakemake.output.resolved
 out_unresolved = snakemake.output.unresolved
 cfg = snakemake.config
 
 MAX_RETRIES = int(cfg.get("max_retries", 3))
-RETRY_WAIT  = int(cfg.get("retry_wait_seconds", 5))
-BATCH_SIZE  = 500
+RETRY_WAIT = int(cfg.get("retry_wait_seconds", 5))
+BATCH_SIZE = 500
 
 # Ensembl Plants release fallback chain (newest → oldest).
 # Format: (release_label, biomart_url)
@@ -47,26 +47,26 @@ ENSEMBL_PLANTS_RELEASES: List[Tuple[str, str]] = [
 # Species to BioMart dataset mapping
 SPECIES_TO_DATASET = {
     "arabidopsis_thaliana": "athaliana_eg_gene",
-    "oryza_sativa":         "osativa_eg_gene",
-    "zea_mays":             "zmays_eg_gene",
+    "oryza_sativa": "osativa_eg_gene",
+    "zea_mays": "zmays_eg_gene",
     "solanum_lycopersicum": "slycopersicum_eg_gene",
-    "glycine_max":          "gmax_eg_gene",
-    "solanum_tuberosum":    "stuberosum_eg_gene",
-    "citrus_sinensis":      "csinensis_eg_gene",
+    "glycine_max": "gmax_eg_gene",
+    "solanum_tuberosum": "stuberosum_eg_gene",
+    "citrus_sinensis": "csinensis_eg_gene",
 }
 
 # ID prefix to species mapping
 PREFIX_TO_SPECIES = {
-    "AT":     "arabidopsis_thaliana",
-    "Os":     "oryza_sativa",
+    "AT": "arabidopsis_thaliana",
+    "Os": "oryza_sativa",
     "LOC_Os": "oryza_sativa",
-    "OS":     "oryza_sativa",
-    "Zm":     "zea_mays",
-    "GRMZM":  "zea_mays",
-    "AC":     "zea_mays",
-    "Solyc":  "solanum_lycopersicum",
-    "Glyma":  "glycine_max",
-    "PGSC":   "solanum_tuberosum",
+    "OS": "oryza_sativa",
+    "Zm": "zea_mays",
+    "GRMZM": "zea_mays",
+    "AC": "zea_mays",
+    "Solyc": "solanum_lycopersicum",
+    "Glyma": "glycine_max",
+    "PGSC": "solanum_tuberosum",
     "orange": "citrus_sinensis",
 }
 
@@ -90,6 +90,7 @@ UNRESOLVED_COLS = ["transcript_id", "raw_header", "source_file", "reason"]
 
 
 # ── Helpers ───────────────────────────────────────────────────
+
 
 def normalize_strand(value) -> str:
     if value in (1, "1", "+", "+1"):
@@ -216,7 +217,7 @@ def _post_query(url: str, query: str) -> Optional[pd.DataFrame]:
         return pd.DataFrame()  # server up, no results — don't retry
 
     header = lines[0].split("\t")
-    data   = [line.split("\t") for line in lines[1:] if line.strip()]
+    data = [line.split("\t") for line in lines[1:] if line.strip()]
     return pd.DataFrame(data, columns=header)
 
 
@@ -289,23 +290,25 @@ df = pd.read_csv(input_tsv, sep="\t")
 log.info(f"Loaded {len(df)} unresolved IDs")
 
 df["inferred_species"] = df["transcript_id"].apply(get_species_from_id)
-plant_df    = df[df["inferred_species"].notna()].copy()
+plant_df = df[df["inferred_species"].notna()].copy()
 non_plant_df = df[df["inferred_species"].isna()]
 log.info(f"Found {len(plant_df)} plant IDs to query via BioMart")
 
-resolved_rows:   List[dict] = []
+resolved_rows: List[dict] = []
 unresolved_rows: List[dict] = []
 
 for species, group in plant_df.groupby("inferred_species"):
     if species not in SPECIES_TO_DATASET:
         log.warning(f"No BioMart dataset configured for species: {species}")
         for _, row in group.iterrows():
-            unresolved_rows.append({
-                "transcript_id": row["transcript_id"],
-                "raw_header":    row.get("raw_header", ""),
-                "source_file":   row.get("source_file", ""),
-                "reason":        f"no_biomart_dataset_{species}",
-            })
+            unresolved_rows.append(
+                {
+                    "transcript_id": row["transcript_id"],
+                    "raw_header": row.get("raw_header", ""),
+                    "source_file": row.get("source_file", ""),
+                    "reason": f"no_biomart_dataset_{species}",
+                }
+            )
         continue
 
     dataset = SPECIES_TO_DATASET[species]
@@ -341,26 +344,28 @@ for species, group in plant_df.groupby("inferred_species"):
     if not all_results:
         log.warning(f"  No BioMart results for {species}")
         for tid, info in all_candidates.items():
-            unresolved_rows.append({
-                "transcript_id": tid,
-                "raw_header":    info["raw_header"],
-                "source_file":   info["source_file"],
-                "reason":        f"biomart_no_match_{species}_all_releases_exhausted",
-            })
+            unresolved_rows.append(
+                {
+                    "transcript_id": tid,
+                    "raw_header": info["raw_header"],
+                    "source_file": info["source_file"],
+                    "reason": f"biomart_no_match_{species}_all_releases_exhausted",
+                }
+            )
         continue
 
     biomart_df = pd.concat(all_results, ignore_index=True)
 
     # Normalise column names (BioMart returns human-readable headers)
     col_map = {
-        "Transcript stable ID":       "queried_id",
-        "Gene stable ID":             "gene_id",
-        "Gene name":                  "gene_symbol",
-        "Assembly":                   "assembly_name",
-        "Chromosome/scaffold name":   "chrom",
-        "Transcript start (bp)":      "start",
-        "Transcript end (bp)":        "end",
-        "Strand":                     "strand",
+        "Transcript stable ID": "queried_id",
+        "Gene stable ID": "gene_id",
+        "Gene name": "gene_symbol",
+        "Assembly": "assembly_name",
+        "Chromosome/scaffold name": "chrom",
+        "Transcript start (bp)": "start",
+        "Transcript end (bp)": "end",
+        "Strand": "strand",
     }
     biomart_df = biomart_df.rename(columns=col_map)
 
@@ -370,14 +375,14 @@ for species, group in plant_df.groupby("inferred_species"):
         qid = str(row.get("queried_id", ""))
         if qid and qid not in biomart_lookup:
             biomart_lookup[qid] = {
-                "gene_id":       row.get("gene_id", ""),
-                "gene_symbol":   row.get("gene_symbol", ""),
+                "gene_id": row.get("gene_id", ""),
+                "gene_symbol": row.get("gene_symbol", ""),
                 "assembly_name": row.get("assembly_name", ""),
-                "chrom":         row.get("chrom", ""),
-                "start":         row.get("start", ""),
-                "end":           row.get("end", ""),
-                "strand":        normalize_strand(row.get("strand", "")),
-                "release":       row.get("_release", used_release),
+                "chrom": row.get("chrom", ""),
+                "start": row.get("start", ""),
+                "end": row.get("end", ""),
+                "strand": normalize_strand(row.get("strand", "")),
+                "release": row.get("_release", used_release),
             }
 
     # Match original IDs → resolved / unresolved
@@ -386,46 +391,52 @@ for species, group in plant_df.groupby("inferred_species"):
         for candidate in info["candidates"]:
             if candidate in biomart_lookup:
                 m = biomart_lookup[candidate]
-                resolved_rows.append({
-                    "transcript_id":        tid,
-                    "db_source":            "plant",
-                    "gene_id":              m["gene_id"],
-                    "gene_symbol":          m["gene_symbol"] or m["gene_id"],
-                    "organism":             species,
-                    "assembly_accession":   "EnsemblPlants",
-                    "assembly_name":        m["assembly_name"],
-                    "chrom":                m["chrom"],
-                    "start":                m["start"],
-                    "end":                  m["end"],
-                    "strand":               m["strand"],
-                    "ensembl_plants_release": m["release"],
-                    "is_ambiguous":         False,
-                })
+                resolved_rows.append(
+                    {
+                        "transcript_id": tid,
+                        "db_source": "plant",
+                        "gene_id": m["gene_id"],
+                        "gene_symbol": m["gene_symbol"] or m["gene_id"],
+                        "organism": species,
+                        "assembly_accession": "EnsemblPlants",
+                        "assembly_name": m["assembly_name"],
+                        "chrom": m["chrom"],
+                        "start": m["start"],
+                        "end": m["end"],
+                        "strand": m["strand"],
+                        "ensembl_plants_release": m["release"],
+                        "is_ambiguous": False,
+                    }
+                )
                 matched = True
                 break
 
         if not matched:
-            unresolved_rows.append({
-                "transcript_id": tid,
-                "raw_header":    info["raw_header"],
-                "source_file":   info["source_file"],
-                "reason":        f"biomart_no_match_{species}",
-            })
+            unresolved_rows.append(
+                {
+                    "transcript_id": tid,
+                    "raw_header": info["raw_header"],
+                    "source_file": info["source_file"],
+                    "reason": f"biomart_no_match_{species}",
+                }
+            )
 
 # Non-plant IDs pass through as unresolved
 for _, row in non_plant_df.iterrows():
-    unresolved_rows.append({
-        "transcript_id": row["transcript_id"],
-        "raw_header":    row.get("raw_header", ""),
-        "source_file":   row.get("source_file", ""),
-        "reason":        "not_plant_id",
-    })
+    unresolved_rows.append(
+        {
+            "transcript_id": row["transcript_id"],
+            "raw_header": row.get("raw_header", ""),
+            "source_file": row.get("source_file", ""),
+            "reason": "not_plant_id",
+        }
+    )
 
 # ── Write outputs ─────────────────────────────────────────────
-res_df   = pd.DataFrame(resolved_rows,   columns=RESOLVED_COLS)
+res_df = pd.DataFrame(resolved_rows, columns=RESOLVED_COLS)
 unres_df = pd.DataFrame(unresolved_rows, columns=UNRESOLVED_COLS)
 
-res_df.to_csv(out_resolved,   sep="\t", index=False)
+res_df.to_csv(out_resolved, sep="\t", index=False)
 unres_df.to_csv(out_unresolved, sep="\t", index=False)
 
 log.info("BioMart batch resolution complete:")

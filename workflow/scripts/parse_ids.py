@@ -600,7 +600,9 @@ for fasta_path in fastas:
         if db_source == "unknown":
             embedded = find_embedded_accession(raw_header)
             if embedded:
-                transcript_id, db_source, species_hint, source_hint, assembly_hint = embedded
+                transcript_id, db_source, species_hint, source_hint, assembly_hint = (
+                    embedded
+                )
                 log.debug(
                     f"  Fallback extraction: {transcript_id!r} → {db_source} "
                     f"(from header: {raw_header!r})"
@@ -616,9 +618,7 @@ for fasta_path in fastas:
             log.debug(
                 f"  Unknown ID format: {transcript_id!r} (header: {raw_header!r})"
             )
-            unknown_rows.append(
-                {**row, "reason": "pattern_unmatched"}
-            )
+            unknown_rows.append({**row, "reason": "pattern_unmatched"})
         else:
             log.debug(f"  Classified {transcript_id!r} → {db_source}")
             classified_rows.append(

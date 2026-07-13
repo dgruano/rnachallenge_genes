@@ -14,7 +14,6 @@ import re
 import shutil
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent
 RESULTS_DIR = ROOT / "results"
 OLD_RESULTS_DIR = ROOT / "old results"
@@ -52,7 +51,9 @@ def gather_declared_outputs() -> tuple[set[str], bool]:
     return declared, has_species_wildcard
 
 
-def is_declared(rel_path: str, declared_patterns: set[str], has_species_wildcard: bool) -> bool:
+def is_declared(
+    rel_path: str, declared_patterns: set[str], has_species_wildcard: bool
+) -> bool:
     """Check whether a results-relative file path is declared by current rules."""
     if rel_path in declared_patterns:
         return True
