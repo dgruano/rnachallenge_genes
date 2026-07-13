@@ -48,6 +48,35 @@ snakemake --profile profiles/default --rerun-triggers=mtime \
 
 ---
 
+## Run failures — 2026-07-13 (`fix/phytozome-jgi-download-id`)
+
+A forced full run (`.snakemake/log/2026-07-13T004801…log`) completed 51/71 steps
+then exited on three independent failures. Root-caused below. Two are real bugs
+(NCBI GenBank, phytozome key mismatch); one is transient BioMart flakiness.
+
+### TB-1. `resolve_ncbi_genbank` crashes the whole batch on 4 junk IDs ✅ DONE (2026-07-13)
+- **Symptom:** `RuntimeError: Some IDs have invalid value and were omitted. Maximum ID value 18446744073709551615` in `_epost` ([ncbi_genbank_fetcher.py:206](workflow/scripts/ncbi_genbank_fetcher.py#L206)); the rule exits non-zero and takes down the run.
+- **Root cause:** [resolve_ncbi_genbank.py:98](workflow/scripts/resolve_ncbi_genbank.py#L98) feeds **every** `db_source == ncbi` row straight to `Entrez.epost(db="nuccore", id=",".join(accessions))`. Of the 1,619 IDs, four are malformed — `xm_003`, `np_205`, `np_206`, `nc_201` (lowercase prefix, truncated numeric; not real accessions). NCBI rejects them, returns an `<ERROR>` element, and Biopython's `Entrez.read` **raises on it**, discarding the ~1,615 valid `XM_`/`NM_` accessions in the same batch. One bad ID poisons the whole epost.
+- **Fix:** quarantine non-accession IDs before eposting. Filter `accessions` to a real accession shape (e.g. `^[A-Z]{2}_?\d{6,}(\.\d+)?$` after `.strip().upper()`) and write the rejects to the unresolved output instead of passing them to `fetch()`. Ideally also fix upstream in `parse_ids` so `xm_003`/`nc_201` classify as `unknown`, not `ncbi`.
+- **Note:** these 4 junk IDs are the *only* reason the batch fails; the other 1,615 resolve fine once they're removed.
+- **✅ Fix landed (2026-07-13):** [resolve_ncbi_genbank.py](workflow/scripts/resolve_ncbi_genbank.py) now filters `df_ncbi["transcript_id"]` through `ACCESSION_RE` (`^[A-Z]{1,2}_?\d{5,}(\.\d+)?$`, matched after `.strip().upper()`) **before** `fetcher.fetch()`. Non-matching IDs are routed to the unresolved output with `reason=invalid_accession` and never reach `Entrez.epost`, so one malformed ID can no longer poison the batch. The `fetch([])`/all-junk case is already guarded in [ncbi_genbank_fetcher.py:175](workflow/scripts/ncbi_genbank_fetcher.py#L175). Verified: the 4 junk IDs are rejected and real `XM_`/`NM_`/`NR_`/`XR_`/`AB` accessions pass. Upstream `parse_ids` classification left as-is (defensive filter at the epost boundary is sufficient).
+
+### TB-2. `download_phytozome_gtf` — config key ≠ `gtf:` basename (empty logs) 🔴 OPEN
+- **Symptom:** 4 SLURM jobs FAILED with **empty rule logs**: `Csinensis_154_v1.1.gene`, `Sbicolor_313_v3.1.gene`, `Rcommunis_119_v0.1.gene`, `Osativa_204_v7.0.gene`. The other 6 phytozome species succeeded.
+- **Root cause:** the `{species}` wildcard is derived from the `gtf:` **filename** (`resolve_phytozome_gtf` requests `phytozome_sources[s]["gtf"]`, so Snakemake matches the download rule's `resources/phytozome/{species}.gff3.gz` output → `{species}=Csinensis_154_v1.1.gene`). But the config entries are keyed by **organism name** (`citrus_sinensis`, `sorghum_bicolor`, `ricinus_communis`, `oryza_sativa`). [download_phytozome_gtf.py:92](workflow/scripts/download_phytozome_gtf.py#L92) does `sources.get(species)` → `None` → no `genome_id`, no manifest entry, no URL → `WorkflowError` raised **before** any `log_path.write_text` (hence the empty logs). The 6 that succeeded have `gtf` basename == config key.
+- **This reopens Priority 0 §"Config path mismatch (fixed)".** The 2026-07-12 fix repointed the 4 `gtf:` paths to on-disk `.gene.gff3.gz` files and relied on their mtime; the branch's genome_id-based rewrite (commit `55a8e86`) now re-resolves via `genome_id` keyed on the filename-wildcard, so the mismatch is live again — and a forced run rebuilds the `protected()` outputs regardless of the local files.
+- **Fix — pick one:**
+  - **Lazy:** rename the 4 `gtf:` paths in [phytozome_gtf_sources.yaml](config/phytozome_gtf_sources.yaml) to match their keys (`resources/phytozome/citrus_sinensis.gff3.gz`, etc.), matching the 6 working entries.
+  - **Robust:** in download_phytozome_gtf.py, resolve the entry by reverse-matching `Path(entry["gtf"]).name == f"{species}.gff3.gz"` instead of `sources.get(species)`.
+  - **Either way:** add a `log_path.write_text(...)` to the `WorkflowError` paths — the silent empty logs are what turned this into a diagnosis hunt.
+
+### L5. `download_metadata_table` / solanum_lycopersicum — transient BioMart 🟡
+- **Symptom:** `Empty response from BioMart for slycopersicum_eg_gene` on all 3 attempts. Only tomato failed; the other 4 species succeeded.
+- **Cause:** documented Ensembl Plants BioMart flakiness (see Performance & Troubleshooting in CLAUDE.md).
+- **Fix:** rerun — likely transient. If it persists, the tomato GTF downloaded fine (`solanum_lycopersicum.gtf.gz`), so the plant_gtf path already covers it; verify the mart dataset name against the current Plants release only if it keeps failing.
+
+---
+
 ## Evidence (post-fix run, 2026-07-12 ~12:00 and reruns after bottleneck fixes)
 
 | Signal | Before fixes | After fixes 1–3 | After cleanup #5 | Status |
@@ -340,6 +369,12 @@ Each concern was investigated in isolation; full findings in `audit/`:
 11. ~~**[bottleneck] Populate `fasta_url` for URL-less non-NCBI rows**~~ 🟡 **PARTIALLY DONE (2026-07-12)** — plant stream now fills by `organism` fallback in merge (541/541). `plant_gtf` and most phytozome rows now carry URL metadata in merged output; however phytozome genome FASTA remains unavailable as a reliable source in current config workflow. **Decision:** defer phytozome (203 rows).
 12. **[bottleneck, optional] Handle roman-numeral + dead assemblies** — roman↔arabic chrom mapping for worm/noncode `chrIV`; the "~48 dead assemblies" collapsed to **2** after the FTP-URL refactor + retry (2026-07-12): `GCF_000001215.3` (404, use `.4`) and `GCF_000001545.5` (`ponAbe2`, folder removed). Bump to current versions or accept as lost. Lowest ROI. See **L2**.
 
+### Run-failure fixes (new — from 2026-07-13 run)
+
+16. ~~**[blocker] Filter junk IDs before NCBI epost**~~ ✅ **DONE (2026-07-13)** — `resolve_ncbi_genbank.py` now quarantines non-accession IDs (`xm_003`, `np_205`, `np_206`, `nc_201`) via `ACCESSION_RE` before `fetcher.fetch()`/`Entrez.epost`, routing them to unresolved as `invalid_accession`. Unblocks the ~1,615 valid IDs that the crash was discarding. See **TB-1**.
+17. **[blocker] Fix phytozome config-key/`gtf:`-basename mismatch** — rename the 4 `gtf:` paths to match their config keys (or reverse-match by basename in `download_phytozome_gtf.py`) so `citrus/sorghum/ricinus/oryza` resolve a `genome_id`. Also write the log on `WorkflowError` paths so failures aren't silent. See **TB-2**. Reopens Priority 0 §"Config path mismatch".
+18. **[transient] Rerun tomato metadata** — `download_metadata_table` for solanum_lycopersicum failed on transient BioMart; rerun, or rely on the already-downloaded plant GTF. See **L5**.
+
 ### Cleanup (unchanged)
 
 13. **Delete `download_assemblies.py`**; delete/repoint the 2 stale integration-test assertions (no test imports it — `test_phase4` has its own copies).
@@ -389,6 +424,11 @@ awk -F'\t' 'FNR>1{print $NF}' results/sequences/*.failed.tsv | sort | uniq -c
 ## Next steps (bottlenecks first, then cleanup)
 
 **Blockers resolved, #9 and #10 landed. Extraction at 13,199 (~85%). Remaining work is targeted cleanup + deferred phytozome policy.**
+
+### Priority -1: Fix 2026-07-13 run blockers (NEW — actionables #16–18)
+- **#16 — NCBI epost crash (TB-1):** ✅ **DONE (2026-07-13)** — junk IDs filtered before epost in `resolve_ncbi_genbank.py`.
+- **#17 — phytozome key mismatch (TB-2):** 🔴 OPEN — align config keys with `gtf:` basenames (or reverse-match in `download_phytozome_gtf.py`) and log on the `WorkflowError` paths.
+- **#18 — tomato BioMart (L5):** 🟡 transient; rerun.
 
 ### Priority 0: Land the phytozome/JGI unblock (NEW 2026-07-12)
 - JGI auth is now implemented + 5 new species wired. **Re-run parse → phytozome resolution → merge** to grow the resolved set with the new species (vitis/potato/amborella/chlamydomonas/physcomitrella). See [Phytozome/JGI unblock](#phytozomejgi-unblock-2026-07-12).
