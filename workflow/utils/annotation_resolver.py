@@ -82,8 +82,19 @@ def wormbase_candidates(tid: str) -> list[str]:
     return [c for c in dict.fromkeys(candidates) if c]
 
 
+_SGD_SOURCE_RE = re.compile(r"^Source:SGD;Acc:(S\d+)$", re.IGNORECASE)
+
+
 def yeast_candidates(tid: str) -> list[str]:
     candidates = [tid]
+
+    # ROI #6: canonicalize Source:SGD;Acc:S000028522 → the bare SGDID and its
+    # dbxref form (SGD:S000028522), the keys the GFF3 index exposes.
+    m = _SGD_SOURCE_RE.match(tid)
+    if m:
+        sgdid = m.group(1)
+        candidates.append(sgdid)
+        candidates.append(f"SGD:{sgdid}")
 
     stripped = re.sub(r"_[AB]$", "", tid)
     if stripped != tid:
