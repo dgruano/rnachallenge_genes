@@ -15,86 +15,129 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
-from report_utils import df_to_html_table, next_actions_html, report_intro_html, stat_card
+from report_utils import (
+    df_to_html_table,
+    next_actions_html,
+    report_intro_html,
+    stat_card,
+)
 
-log          = get_logger("generate_resolution_report", snakemake.log[0])
-out_html     = snakemake.output.html
-UPSTREAM     = snakemake.params.upstream
-DOWNSTREAM   = snakemake.params.downstream
-RELEASE      = snakemake.params.release
+log = get_logger("generate_resolution_report", snakemake.log[0])
+out_html = snakemake.output.html
+UPSTREAM = snakemake.params.upstream
+DOWNSTREAM = snakemake.params.downstream
+RELEASE = snakemake.params.release
 
-in_classified      = snakemake.input.classified
-in_resolved        = snakemake.input.resolved
-in_unresolved      = snakemake.input.unresolved
-in_unmatched       = snakemake.input.unmatched
-in_not_found       = snakemake.input.not_found
-in_ambiguous       = snakemake.input.ambiguous
-in_species_map     = snakemake.input.species_map
-in_unknown_pfx     = snakemake.input.unknown_prefixes
-in_benchmarks      = snakemake.input.benchmarks
-in_ncbi_asm_res   = snakemake.input.ncbi_assembly_resolved
-in_ncbi_asm_unr   = snakemake.input.ncbi_assembly_unresolved
-in_ensl_asm_res   = snakemake.input.ensembl_assembly_resolved
-in_ensl_asm_unr   = snakemake.input.ensembl_assembly_unresolved
-in_nonc_asm_res   = snakemake.input.noncode_assembly_resolved
-in_nonc_asm_unr   = snakemake.input.noncode_assembly_unresolved
-in_gramene_res     = snakemake.input.gramene_resolved
-in_gramene_unr     = snakemake.input.gramene_unresolved
-in_phyto_res       = snakemake.input.phytozome_resolved
-in_phyto_unr       = snakemake.input.phytozome_unresolved
-in_nonc_res        = snakemake.input.noncode_resolved
-in_nonc_unr        = snakemake.input.noncode_unresolved
-in_nonc_v4_res     = snakemake.input.noncode_v4_resolved
-in_nonc_v4_unr     = snakemake.input.noncode_v4_unresolved
-in_nonc_2016_res   = snakemake.input.noncode_2016_resolved
-in_nonc_2016_unr   = snakemake.input.noncode_2016_unresolved
-in_plant_res       = snakemake.input.plant_gtf_resolved
-in_plant_unr       = snakemake.input.plant_gtf_unresolved
-in_worm_res        = snakemake.input.worm_gtf_resolved
-in_worm_unr        = snakemake.input.worm_gtf_unresolved
-in_fly_res         = snakemake.input.fly_gtf_resolved
-in_fly_unr         = snakemake.input.fly_gtf_unresolved
-in_yeast_res       = snakemake.input.yeast_gtf_resolved
-in_yeast_unr       = snakemake.input.yeast_gtf_unresolved
+in_classified = snakemake.input.classified
+in_resolved = snakemake.input.resolved
+in_unresolved = snakemake.input.unresolved
+in_unmatched = snakemake.input.unmatched
+in_not_found = snakemake.input.not_found
+in_ambiguous = snakemake.input.ambiguous
+in_species_map = snakemake.input.species_map
+in_unknown_pfx = snakemake.input.unknown_prefixes
+in_benchmarks = snakemake.input.benchmarks
+in_ncbi_asm_res = snakemake.input.ncbi_assembly_resolved
+in_ncbi_asm_unr = snakemake.input.ncbi_assembly_unresolved
+in_ensl_asm_res = snakemake.input.ensembl_assembly_resolved
+in_ensl_asm_unr = snakemake.input.ensembl_assembly_unresolved
+in_nonc_asm_res = snakemake.input.noncode_assembly_resolved
+in_nonc_asm_unr = snakemake.input.noncode_assembly_unresolved
+in_gramene_res = snakemake.input.gramene_resolved
+in_gramene_unr = snakemake.input.gramene_unresolved
+in_phyto_res = snakemake.input.phytozome_resolved
+in_phyto_unr = snakemake.input.phytozome_unresolved
+in_nonc_res = snakemake.input.noncode_resolved
+in_nonc_unr = snakemake.input.noncode_unresolved
+in_nonc_v4_res = snakemake.input.noncode_v4_resolved
+in_nonc_v4_unr = snakemake.input.noncode_v4_unresolved
+in_nonc_2016_res = snakemake.input.noncode_2016_resolved
+in_nonc_2016_unr = snakemake.input.noncode_2016_unresolved
+in_plant_res = snakemake.input.plant_gtf_resolved
+in_plant_unr = snakemake.input.plant_gtf_unresolved
+in_worm_res = snakemake.input.worm_gtf_resolved
+in_worm_unr = snakemake.input.worm_gtf_unresolved
+in_fly_res = snakemake.input.fly_gtf_resolved
+in_fly_unr = snakemake.input.fly_gtf_unresolved
+in_yeast_res = snakemake.input.yeast_gtf_resolved
+in_yeast_unr = snakemake.input.yeast_gtf_unresolved
 
 log.info("Generating HTML resolution summary report")
 
-df_cls    = pd.read_csv(in_classified,  sep="\t")
-df_res    = pd.read_csv(in_resolved,    sep="\t")
-df_unr    = pd.read_csv(in_unresolved,  sep="\t")
-df_unmatched = pd.read_csv(in_unmatched, sep="\t") if Path(in_unmatched).exists() else pd.DataFrame()
-df_not_found = pd.read_csv(in_not_found, sep="\t") if Path(in_not_found).exists() else pd.DataFrame()
-df_amb    = pd.read_csv(in_ambiguous,   sep="\t")
-df_spmap  = pd.read_csv(in_species_map, sep="\t")
-df_unkpfx = pd.read_csv(in_unknown_pfx, sep="\t") if Path(in_unknown_pfx).exists() else pd.DataFrame()
-df_ncbi_asm_res  = pd.read_csv(in_ncbi_asm_res,  sep="\t") if Path(in_ncbi_asm_res).exists()  else pd.DataFrame()
-df_ncbi_asm_unr  = pd.read_csv(in_ncbi_asm_unr,  sep="\t") if Path(in_ncbi_asm_unr).exists()  else pd.DataFrame()
-df_ensl_asm_res  = pd.read_csv(in_ensl_asm_res,  sep="\t") if Path(in_ensl_asm_res).exists()  else pd.DataFrame()
-df_ensl_asm_unr  = pd.read_csv(in_ensl_asm_unr,  sep="\t") if Path(in_ensl_asm_unr).exists()  else pd.DataFrame()
-df_nonc_asm_res  = pd.read_csv(in_nonc_asm_res,  sep="\t") if Path(in_nonc_asm_res).exists()  else pd.DataFrame()
-df_nonc_asm_unr  = pd.read_csv(in_nonc_asm_unr,  sep="\t") if Path(in_nonc_asm_unr).exists()  else pd.DataFrame()
+df_cls = pd.read_csv(in_classified, sep="\t")
+df_res = pd.read_csv(in_resolved, sep="\t")
+df_unr = pd.read_csv(in_unresolved, sep="\t")
+df_unmatched = (
+    pd.read_csv(in_unmatched, sep="\t")
+    if Path(in_unmatched).exists()
+    else pd.DataFrame()
+)
+df_not_found = (
+    pd.read_csv(in_not_found, sep="\t")
+    if Path(in_not_found).exists()
+    else pd.DataFrame()
+)
+df_amb = pd.read_csv(in_ambiguous, sep="\t")
+df_spmap = pd.read_csv(in_species_map, sep="\t")
+df_unkpfx = (
+    pd.read_csv(in_unknown_pfx, sep="\t")
+    if Path(in_unknown_pfx).exists()
+    else pd.DataFrame()
+)
+df_ncbi_asm_res = (
+    pd.read_csv(in_ncbi_asm_res, sep="\t")
+    if Path(in_ncbi_asm_res).exists()
+    else pd.DataFrame()
+)
+df_ncbi_asm_unr = (
+    pd.read_csv(in_ncbi_asm_unr, sep="\t")
+    if Path(in_ncbi_asm_unr).exists()
+    else pd.DataFrame()
+)
+df_ensl_asm_res = (
+    pd.read_csv(in_ensl_asm_res, sep="\t")
+    if Path(in_ensl_asm_res).exists()
+    else pd.DataFrame()
+)
+df_ensl_asm_unr = (
+    pd.read_csv(in_ensl_asm_unr, sep="\t")
+    if Path(in_ensl_asm_unr).exists()
+    else pd.DataFrame()
+)
+df_nonc_asm_res = (
+    pd.read_csv(in_nonc_asm_res, sep="\t")
+    if Path(in_nonc_asm_res).exists()
+    else pd.DataFrame()
+)
+df_nonc_asm_unr = (
+    pd.read_csv(in_nonc_asm_unr, sep="\t")
+    if Path(in_nonc_asm_unr).exists()
+    else pd.DataFrame()
+)
+
 
 def _read(p):
     return pd.read_csv(p, sep="\t") if Path(p).exists() else pd.DataFrame()
 
-df_gramene_res   = _read(in_gramene_res)
-df_gramene_unr   = _read(in_gramene_unr)
-df_phyto_res     = _read(in_phyto_res)
-df_phyto_unr     = _read(in_phyto_unr)
-df_nonc_res      = _read(in_nonc_res)
-df_nonc_unr      = _read(in_nonc_unr)
-df_nonc_v4_res   = _read(in_nonc_v4_res)
-df_nonc_v4_unr   = _read(in_nonc_v4_unr)
+
+df_gramene_res = _read(in_gramene_res)
+df_gramene_unr = _read(in_gramene_unr)
+df_phyto_res = _read(in_phyto_res)
+df_phyto_unr = _read(in_phyto_unr)
+df_nonc_res = _read(in_nonc_res)
+df_nonc_unr = _read(in_nonc_unr)
+df_nonc_v4_res = _read(in_nonc_v4_res)
+df_nonc_v4_unr = _read(in_nonc_v4_unr)
 df_nonc_2016_res = _read(in_nonc_2016_res)
 df_nonc_2016_unr = _read(in_nonc_2016_unr)
-df_plant_res     = _read(in_plant_res)
-df_plant_unr     = _read(in_plant_unr)
-df_worm_res      = _read(in_worm_res)
-df_worm_unr      = _read(in_worm_unr)
-df_fly_res       = _read(in_fly_res)
-df_fly_unr       = _read(in_fly_unr)
-df_yeast_res     = _read(in_yeast_res)
-df_yeast_unr     = _read(in_yeast_unr)
+df_plant_res = _read(in_plant_res)
+df_plant_unr = _read(in_plant_unr)
+df_worm_res = _read(in_worm_res)
+df_worm_unr = _read(in_worm_unr)
+df_fly_res = _read(in_fly_res)
+df_fly_unr = _read(in_fly_unr)
+df_yeast_res = _read(in_yeast_res)
+df_yeast_unr = _read(in_yeast_unr)
 
 # ── Benchmark table ───────────────────────────────────────────
 bench_rows = []
@@ -103,26 +146,41 @@ for bpath in in_benchmarks:
     try:
         bdf = pd.read_csv(bpath, sep="\t")
         row = bdf.iloc[0]
-        bench_rows.append({
-            "Rule":          rule_name,
-            "Wall time (s)": f"{float(row.get('s', 0)):.1f}",
-            "CPU time (s)":  f"{float(row.get('cpu_time', row.get('s', 0))):.1f}",
-            "Max RSS (MB)":  f"{float(row.get('max_rss', 0)):.0f}",
-        })
+        bench_rows.append(
+            {
+                "Rule": rule_name,
+                "Wall time (s)": f"{float(row.get('s', 0)):.1f}",
+                "CPU time (s)": f"{float(row.get('cpu_time', row.get('s', 0))):.1f}",
+                "Max RSS (MB)": f"{float(row.get('max_rss', 0)):.0f}",
+            }
+        )
     except Exception as exc:
         log.warning(f"Could not parse benchmark {bpath}: {exc}")
-        bench_rows.append({"Rule": rule_name, "Wall time (s)": "N/A", "CPU time (s)": "N/A", "Max RSS (MB)": "N/A"})
+        bench_rows.append(
+            {
+                "Rule": rule_name,
+                "Wall time (s)": "N/A",
+                "CPU time (s)": "N/A",
+                "Max RSS (MB)": "N/A",
+            }
+        )
 
 df_bench = pd.DataFrame(bench_rows)
 
 # ── Per-DB stats ──────────────────────────────────────────────
-db_input    = df_cls["db_source"].value_counts().to_dict()
-db_resolved = df_res["db_source"].value_counts().to_dict() if "db_source" in df_res.columns else {}
+db_input = df_cls["db_source"].value_counts().to_dict()
+db_resolved = (
+    df_res["db_source"].value_counts().to_dict()
+    if "db_source" in df_res.columns
+    else {}
+)
 
 # ── Ensembl species breakdown ─────────────────────────────────
 ensembl_species_rows = ""
 if not df_spmap.empty and "species" in df_spmap.columns:
-    sp_counts = df_spmap.groupby(["species", "build"]).size().reset_index(name="n_transcripts")
+    sp_counts = (
+        df_spmap.groupby(["species", "build"]).size().reset_index(name="n_transcripts")
+    )
     for _, r in sp_counts.iterrows():
         ensembl_species_rows += (
             f"<tr><td>{r['species']}</td><td>{r['build']}</td>"
@@ -140,31 +198,52 @@ n_unclassified = len(df_unmatched)
 n_classified_unresolved = len(df_not_found)
 n_unresolved_total = n_unclassified + n_classified_unresolved
 total_input = len(df_cls) + n_unclassified
-now          = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 if len(df_unr) != n_unresolved_total:
-  log.warning(
-    "unresolved.tsv count (%s) != pattern_unmatched + matched_not_found (%s)",
-    len(df_unr),
-    n_unresolved_total,
-  )
+    log.warning(
+        "unresolved.tsv count (%s) != pattern_unmatched + matched_not_found (%s)",
+        len(df_unr),
+        n_unresolved_total,
+    )
 
 # Pipeline funnel (resolution stage)
-_asm = df_res["assembly_accession"] if "assembly_accession" in df_res.columns else pd.Series(dtype=str)
-n_has_assembly = int((_asm.notna() & (_asm.str.strip() != "") & (_asm.str.lower() != "nan") & (_asm.str.lower() != "none")).sum())
-n_has_coords   = int((df_res["start"].notna() & df_res["end"].notna()).sum()) if {"start","end"} <= set(df_res.columns) else 0
+_asm = (
+    df_res["assembly_accession"]
+    if "assembly_accession" in df_res.columns
+    else pd.Series(dtype=str)
+)
+n_has_assembly = int(
+    (
+        _asm.notna()
+        & (_asm.str.strip() != "")
+        & (_asm.str.lower() != "nan")
+        & (_asm.str.lower() != "none")
+    ).sum()
+)
+n_has_coords = (
+    int((df_res["start"].notna() & df_res["end"].notna()).sum())
+    if {"start", "end"} <= set(df_res.columns)
+    else 0
+)
+
 
 def _pct(num, denom):
     return f"{100*num/denom:.0f}%" if denom else "—"
 
+
 funnel_rows = [
-  ("Input IDs",                  total_input,               _pct(total_input, total_input)),
-  ("Classified",                 len(df_cls),               _pct(len(df_cls), total_input)),
-  ("Unclassified",               n_unclassified,            _pct(n_unclassified, total_input)),
-  ("Resolved",                   len(df_res),               _pct(len(df_res), len(df_cls))),
-  ("Classified but unresolved",  n_classified_unresolved,   _pct(n_classified_unresolved, len(df_cls))),
-  ("Has assembly accession",     n_has_assembly,            _pct(n_has_assembly, len(df_res))),
-  ("Has coordinates",            n_has_coords,              _pct(n_has_coords, len(df_res))),
+    ("Input IDs", total_input, _pct(total_input, total_input)),
+    ("Classified", len(df_cls), _pct(len(df_cls), total_input)),
+    ("Unclassified", n_unclassified, _pct(n_unclassified, total_input)),
+    ("Resolved", len(df_res), _pct(len(df_res), len(df_cls))),
+    (
+        "Classified but unresolved",
+        n_classified_unresolved,
+        _pct(n_classified_unresolved, len(df_cls)),
+    ),
+    ("Has assembly accession", n_has_assembly, _pct(n_has_assembly, len(df_res))),
+    ("Has coordinates", n_has_coords, _pct(n_has_coords, len(df_res))),
 ]
 funnel_html = "".join(
     f"<tr><td>{step}</td><td>{cnt}</td><td>{pct}</td></tr>"
@@ -176,36 +255,54 @@ input_rhs = len(df_cls) + n_unclassified
 unresolved_lhs = len(df_unr)
 unresolved_rhs = n_unresolved_total
 consistency_html = (
-  "<div class='info-box'>"
-  "<strong>Consistency checks</strong><br>"
-  f"Input IDs ({input_lhs}) = Classified ({len(df_cls)}) + Unclassified ({n_unclassified}) "
-  f"{'✓' if input_lhs == input_rhs else '✗'}<br>"
-  f"Unresolved ({unresolved_lhs}) = Unclassified ({n_unclassified}) + Classified but unresolved ({n_classified_unresolved}) "
-  f"{'✓' if unresolved_lhs == unresolved_rhs else '✗'}"
-  "</div>"
+    "<div class='info-box'>"
+    "<strong>Consistency checks</strong><br>"
+    f"Input IDs ({input_lhs}) = Classified ({len(df_cls)}) + Unclassified ({n_unclassified}) "
+    f"{'✓' if input_lhs == input_rhs else '✗'}<br>"
+    f"Unresolved ({unresolved_lhs}) = Unclassified ({n_unclassified}) + Classified but unresolved ({n_classified_unresolved}) "
+    f"{'✓' if unresolved_lhs == unresolved_rhs else '✗'}"
+    "</div>"
 )
 
 RESOLVERS = [
-    ("BioMart Ensembl",    "ensembl",      df_ensl_asm_res,    df_ensl_asm_unr,    "BioMart API"),
-    ("BioMart Plants GTF", "plant_gtf",    df_plant_res,       df_plant_unr,        "Ensembl Plants GTF"),
-    ("Gramene",            "gramene",      df_gramene_res,     df_gramene_unr,      "Gramene REST API"),
-    ("Phytozome",          "phytozome",    df_phyto_res,       df_phyto_unr,        "JGI Phytozome GFF3"),
-    ("NCBI GenBank",       "ncbi",         df_ncbi_asm_res,    df_ncbi_asm_unr,     "NCBI Entrez API"),
-    ("NONCODE v5",         "noncode",      df_nonc_res,        df_nonc_unr,         "NONCODE BED/FASTA"),
-    ("NONCODE v4",         "noncode_v4",   df_nonc_v4_res,     df_nonc_v4_unr,      "NONCODE v4 BED/FASTA"),
-    ("NONCODE 2016",       "noncode_2016", df_nonc_2016_res,   df_nonc_2016_unr,    "NONCODE 2016 BED/FASTA"),
-    ("WormBase GTF",       "wormbase",     df_worm_res,        df_worm_unr,         "Ensembl Metazoa GTF"),
-    ("FlyBase GTF",        "flybase",      df_fly_res,         df_fly_unr,          "Ensembl Metazoa GTF"),
-    ("SGD/Yeast GTF",      "sgd",          df_yeast_res,       df_yeast_unr,        "SGD GTF"),
-    ("Phytozome (plants)", "plant",        df_phyto_res,       df_phyto_unr,        "JGI Phytozome GFF3"),
+    ("BioMart Ensembl", "ensembl", df_ensl_asm_res, df_ensl_asm_unr, "BioMart API"),
+    (
+        "BioMart Plants GTF",
+        "plant_gtf",
+        df_plant_res,
+        df_plant_unr,
+        "Ensembl Plants GTF",
+    ),
+    ("Gramene", "gramene", df_gramene_res, df_gramene_unr, "Gramene REST API"),
+    ("Phytozome", "phytozome", df_phyto_res, df_phyto_unr, "JGI Phytozome GFF3"),
+    ("NCBI GenBank", "ncbi", df_ncbi_asm_res, df_ncbi_asm_unr, "NCBI Entrez API"),
+    ("NONCODE v5", "noncode", df_nonc_res, df_nonc_unr, "NONCODE BED/FASTA"),
+    (
+        "NONCODE v4",
+        "noncode_v4",
+        df_nonc_v4_res,
+        df_nonc_v4_unr,
+        "NONCODE v4 BED/FASTA",
+    ),
+    (
+        "NONCODE 2016",
+        "noncode_2016",
+        df_nonc_2016_res,
+        df_nonc_2016_unr,
+        "NONCODE 2016 BED/FASTA",
+    ),
+    ("WormBase GTF", "wormbase", df_worm_res, df_worm_unr, "Ensembl Metazoa GTF"),
+    ("FlyBase GTF", "flybase", df_fly_res, df_fly_unr, "Ensembl Metazoa GTF"),
+    ("SGD/Yeast GTF", "sgd", df_yeast_res, df_yeast_unr, "SGD GTF"),
+    ("Phytozome (plants)", "plant", df_phyto_res, df_phyto_unr, "JGI Phytozome GFF3"),
 ]
 
 resolver_rows_html = ""
 for label, db, df_r, df_u, method in RESOLVERS:
-    n_in  = db_input.get(db, 0)
+    n_in = db_input.get(db, 0)
     n_res = len(df_r)
     n_unr = len(df_u)
-    rate  = f"{100*n_res/(n_res+n_unr):.0f}%" if (n_res + n_unr) > 0 else "—"
+    rate = f"{100*n_res/(n_res+n_unr):.0f}%" if (n_res + n_unr) > 0 else "—"
     resolver_rows_html += (
         f"<tr><td>{label}</td><td><code>{db}</code></td>"
         f"<td>{n_in}</td><td>{n_res}</td><td>{n_unr}</td>"
@@ -225,8 +322,8 @@ if not df_gramene_res.empty and "biotype" in df_gramene_res.columns:
 
 noncode_rows_html = ""
 for label, df_r, df_u in [
-    ("NONCODE v5",   df_nonc_res,      df_nonc_unr),
-    ("NONCODE v4",   df_nonc_v4_res,   df_nonc_v4_unr),
+    ("NONCODE v5", df_nonc_res, df_nonc_unr),
+    ("NONCODE v4", df_nonc_v4_res, df_nonc_v4_unr),
     ("NONCODE 2016", df_nonc_2016_res, df_nonc_2016_unr),
 ]:
     noncode_rows_html += (
@@ -236,7 +333,7 @@ for label, df_r, df_u in [
 
 asm_rows_html = ""
 for resolver, df_r, df_u in [
-    ("NCBI",    df_ncbi_asm_res, df_ncbi_asm_unr),
+    ("NCBI", df_ncbi_asm_res, df_ncbi_asm_unr),
     ("Ensembl", df_ensl_asm_res, df_ensl_asm_unr),
     ("NONCODE", df_nonc_asm_res, df_nonc_asm_unr),
 ]:

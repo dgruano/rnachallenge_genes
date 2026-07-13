@@ -7,7 +7,7 @@ _Date: 2026-07-12 · Branch: `main` · HEAD: `bab60c9` (WIP: merge resolved)_
 
 ## TL;DR — UPDATED 2026-07-12 POST-FIX
 
-**Status: Extraction working, four blockers/refinements fixed.** 
+**Status: Extraction working, four blockers/refinements fixed.**
 - **Blocker #1 (chrom translation)** ✅ DONE — assembly reports fetched, chromosome names translated
 - **Blocker #2 (extract file wiring)** ✅ DONE — extract now reads remapped `ncbi_chromosome_resolved.tsv`
 - **Blocker #3 (backwards coordinates)** ✅ DONE — defensive swap added, sequence_error collapsed from 1,658 → 1
@@ -15,7 +15,72 @@ _Date: 2026-07-12 · Branch: `main` · HEAD: `bab60c9` (WIP: merge resolved)_
 
 **Current extraction:** **13,199 sequences** from 15,544 resolved IDs (~85% extraction rate) after landing bottleneck fix #10 (manifest-driven URL downloads) and rerunning. Up from 12,163.
 
-Remaining failures are now mostly legitimate data gaps. The only sizable unresolved download bucket is **phytozome (203)**, and this has been explicitly deferred due missing genome FASTA URLs/auth constraints.
+Remaining failures are now mostly legitimate data gaps. The only sizable unresolved download bucket is **phytozome (203)**, previously deferred due missing genome FASTA URLs/auth constraints — **JGI auth is now implemented (2026-07-12), see [Phytozome/JGI unblock](#phytozomejgi-unblock-2026-07-12).**
+
+---
+
+## Phytozome/JGI unblock (2026-07-12)
+
+The phytozome deferral had two distinct blockers; the auth one is now closed:
+
+1. **Annotation (GFF3) download — auth. ✅ UNBLOCKED.** `download_phytozome_gtf` ([resolve_phytozome_gtf.smk](workflow/rules/resolve_phytozome_gtf.smk)) now loads a JGI bearer token from `.env` (`JGI_SESSION_TOKEN` or `PHYTOZOME_BEARER`) and fails loudly if absent. Five new species wired into [config/phytozome_gtf_sources.yaml](config/phytozome_gtf_sources.yaml) + [resources/phytozome/manifest.json](resources/phytozome/manifest.json): amborella, chlamydomonas, physcomitrella, **vitis_vinifera** (`VIT_`/`GSVIVT`/`GTVIVG`), **solanum_tuberosum** (`PGSC`). `parse_ids.py` + `PREFIX_TO_SPECIES` route the new prefixes. This expands **transcript→coordinate resolution**, not extraction.
+2. **Genome FASTA for extraction — still open.** The 203 `assembly_not_cached` phytozome rows resolve to coordinates but can't be sliced: the manifest downloads GFF3 annotations, not genome FASTAs. To extract, add genome-FASTA entries (same JGI token mechanism) to the manifest/config, then re-run download+extract. Until then these remain resolved-but-not-extracted.
+
+**Net:** the token fix grows the *resolved* set (new plant/algae/moss/grape/potato transcripts get coordinates); closing the extraction gap for phytozome is a separate, now-tractable follow-up (JGI FASTA URLs behind the same auth).
+
+### Download id + restore fix (2026-07-12, later — makes downloads actually work)
+
+The token wiring above was necessary but not sufficient: `download_phytozome_gtf` still `401`/`404`'d because it built the URL from the manifest's numeric portal `file_id`, which is **not** a JGI download id. Root-caused and fixed:
+
+- **Correct id resolution.** JGI's `download_files/{_id}/` needs the Mongo `_id` from the file-list API, not `file_id`. The rule now resolves it at download time from the `genome_id` in [config/phytozome_gtf_sources.yaml](config/phytozome_gtf_sources.yaml) via `resolve_annotation()`, pinning the manifest's `portal_file_name`. New helpers in [jgi_phytozome_lookup.py](workflow/scripts/jgi_phytozome_lookup.py); `per_page` capped at 50 (JGI 400s above that). Verified: Amborella downloads a valid 3.5 MB GFF3.
+- **Run block → script.** The rule's inline `run:` block moved to [workflow/scripts/download_phytozome_gtf.py](workflow/scripts/download_phytozome_gtf.py) (`script:` directive, repo convention).
+- **PURGED → auto restore.** On-tape files now POST to `request_archived_files/` and fail with the request id + rerun instructions (safe to repeat). Verified live: physcomitrella → `request_id 652368`. Of the 4 manifest species, amborella + chlamydomonas are `RESTORED`; **physcomitrella + vitis_vinifera are `PURGED`** — restore requested, rerun after ≤24 h.
+- Tests: 8/8 in [tests/test_jgi_phytozome_lookup.py](tests/test_jgi_phytozome_lookup.py) (2 new for `prefer_name` selection). Token/PURGED workflow documented in [CLAUDE.md](CLAUDE.md) → "Phytozome (JGI) access".
+
+Run the two RESTORED species (Amborella output is `protected()` + already present, so clear it first to regenerate):
+```bash
+conda activate rnachallenge_genes
+chmod u+w resources/phytozome/amborella_trichopoda.gff3.gz 2>/dev/null; rm -f resources/phytozome/amborella_trichopoda.gff3.gz
+snakemake --profile profiles/default --rerun-triggers=mtime \
+  resources/phytozome/amborella_trichopoda.gff3.gz \
+  resources/phytozome/chlamydomonas_reinhardtii.gff3.gz
+```
+
+---
+
+## Run failures — 2026-07-13 (`fix/phytozome-jgi-download-id`)
+
+A forced full run (`.snakemake/log/2026-07-13T004801…log`) completed 51/71 steps
+then exited on three independent failures. Root-caused below. Two are real bugs
+(NCBI GenBank, phytozome key mismatch); one is transient BioMart flakiness.
+
+### TB-1. `resolve_ncbi_genbank` crashes the whole batch on 4 junk IDs ✅ DONE (2026-07-13)
+- **Symptom:** `RuntimeError: Some IDs have invalid value and were omitted. Maximum ID value 18446744073709551615` in `_epost` ([ncbi_genbank_fetcher.py:206](workflow/scripts/ncbi_genbank_fetcher.py#L206)); the rule exits non-zero and takes down the run.
+- **Root cause:** [resolve_ncbi_genbank.py:98](workflow/scripts/resolve_ncbi_genbank.py#L98) feeds **every** `db_source == ncbi` row straight to `Entrez.epost(db="nuccore", id=",".join(accessions))`. Of the 1,619 IDs, four are malformed — `xm_003`, `np_205`, `np_206`, `nc_201` (lowercase prefix, truncated numeric; not real accessions). NCBI rejects them, returns an `<ERROR>` element, and Biopython's `Entrez.read` **raises on it**, discarding the ~1,615 valid `XM_`/`NM_` accessions in the same batch. One bad ID poisons the whole epost.
+- **Fix:** quarantine non-accession IDs before eposting. Filter `accessions` to a real accession shape (e.g. `^[A-Z]{2}_?\d{6,}(\.\d+)?$` after `.strip().upper()`) and write the rejects to the unresolved output instead of passing them to `fetch()`. Ideally also fix upstream in `parse_ids` so `xm_003`/`nc_201` classify as `unknown`, not `ncbi`.
+- **Note:** these 4 junk IDs are the *only* reason the batch fails; the other 1,615 resolve fine once they're removed.
+- **✅ Fix landed (2026-07-13):** [resolve_ncbi_genbank.py](workflow/scripts/resolve_ncbi_genbank.py) now filters `df_ncbi["transcript_id"]` through `ACCESSION_RE` (`^[A-Z]{1,2}_?\d{5,}(\.\d+)?$`, matched after `.strip().upper()`) **before** `fetcher.fetch()`. Non-matching IDs are routed to the unresolved output with `reason=invalid_accession` and never reach `Entrez.epost`, so one malformed ID can no longer poison the batch. The `fetch([])`/all-junk case is already guarded in [ncbi_genbank_fetcher.py:175](workflow/scripts/ncbi_genbank_fetcher.py#L175). Verified: the 4 junk IDs are rejected and real `XM_`/`NM_`/`NR_`/`XR_`/`AB` accessions pass. Upstream `parse_ids` classification left as-is (defensive filter at the epost boundary is sufficient).
+
+### TB-2. `download_phytozome_gtf` — config key ≠ `gtf:` basename (empty logs) ✅ DONE (2026-07-13)
+- **Symptom:** 4 SLURM jobs FAILED with **empty rule logs**: `Csinensis_154_v1.1.gene`, `Sbicolor_313_v3.1.gene`, `Rcommunis_119_v0.1.gene`, `Osativa_204_v7.0.gene`. The other 6 phytozome species succeeded.
+- **Root cause:** the `{species}` wildcard is derived from the `gtf:` **filename** (`resolve_phytozome_gtf` requests `phytozome_sources[s]["gtf"]`, so Snakemake matches the download rule's `resources/phytozome/{species}.gff3.gz` output → `{species}=Csinensis_154_v1.1.gene`). But the config entries are keyed by **organism name** (`citrus_sinensis`, `sorghum_bicolor`, `ricinus_communis`, `oryza_sativa`). [download_phytozome_gtf.py:92](workflow/scripts/download_phytozome_gtf.py#L92) does `sources.get(species)` → `None` → no `genome_id`, no manifest entry, no URL → `WorkflowError` raised **before** any `log_path.write_text` (hence the empty logs). The 6 that succeeded have `gtf` basename == config key.
+- **This reopens Priority 0 §"Config path mismatch (fixed)".** The 2026-07-12 fix repointed the 4 `gtf:` paths to on-disk `.gene.gff3.gz` files and relied on their mtime; the branch's genome_id-based rewrite (commit `55a8e86`) now re-resolves via `genome_id` keyed on the filename-wildcard, so the mismatch is live again — and a forced run rebuilds the `protected()` outputs regardless of the local files.
+- **✅ Fix landed (2026-07-13) — folder-per-species layout.** Chosen over the two options above because it makes the `{species}` wildcard *genuinely* the species everywhere (config key, manifest key, wildcard all align), instead of papering over the mismatch.
+  - **Layout.** Every Phytozome GFF3 now lives at `resources/phytozome/<species>/<source_file_name>.gff3.gz`. The `<species>` folder equals the config key, so it becomes the `{species}` wildcard and `sources.get(species)` resolves the `genome_id`. The inner file keeps the JGI source name for traceability. Rule output is `resources/phytozome/{species}/{gff}` with `wildcard_constraints: species=r"[^/]+"` ([resolve_phytozome_gtf.smk](workflow/rules/resolve_phytozome_gtf.smk)); log/benchmark carry both wildcards. The 6 already-working files were `mv`'d into their folders (kept basename, `touch`'d to postdate `manifest.json`); the 4 broken ones download fresh.
+  - **`.gene`, not `gene_exons`.** The 4 broken `gtf:` paths stay on the `.gene.gff3.gz` variant. Pinned via new `portal_file_name` entries in [manifest.json](resources/phytozome/manifest.json) (the JGI heuristic otherwise prefers `gene_exons`). Bonus: `Sbicolor_313_v3.1.gene.gff3.gz` is `RESTORED` where its `gene_exons` is `PURGED`, so sorghum no longer needs a restore. Version verified against real input IDs: RNAChallenge Citrus IDs are `orange1.1g...m` (v1.1 namespace) → `Csinensis_154_v1.1.gene.gff3.gz`.
+  - **No more silent failures.** `download_phytozome_gtf.py` wraps its body so any exception writes to the rule log before re-raising.
+  - **Live-verified:** `prefer_name` resolves the `.gene` file for all 4 (citrus/sorghum/ricinus `RESTORED`; oryza `Osativa_204_v7.0.gene.gff3.gz` `PURGED` → first run fires a JGI restore, rerun ≤24 h). Dry-run: 4 download + 1 resolve job, no `ProtectedOutput`/`MissingInput` errors, 6 moved files up-to-date under `--rerun-triggers=mtime`.
+
+### L5. `download_metadata_table` / solanum_lycopersicum — transient BioMart 🟡
+- **Symptom:** `Empty response from BioMart for slycopersicum_eg_gene` on all 3 attempts. Only tomato failed; the other 4 species succeeded.
+- **Cause:** documented Ensembl Plants BioMart flakiness (see Performance & Troubleshooting in CLAUDE.md).
+- **Fix:** rerun — likely transient. If it persists, the tomato GTF downloaded fine (`solanum_lycopersicum.gtf.gz`), so the plant_gtf path already covers it; verify the mart dataset name against the current Plants release only if it keeps failing.
+
+### TB-3. Ensembl headers mislabelled `ncbi` via embedded-RefSeq substring ✅ FIXED — ⏸ DEFERRED MERGE (branch `fix/parse-ids-embedded-ncbi-substring`)
+- **Symptom:** the first 11 rows of `results/ncbi_genbank_unresolved.tsv` are `invalid_accession` IDs like `NC_010`, `NT_003`, `NP_201`, `xm_003`, `np_205` — surfaced by the TB-1 quarantine filter. They are **not** NCBI IDs at all.
+- **Root cause:** these are **Ensembl** transcripts whose IDs were extracted faultily. `extract_transcript_id` returns the whole underscore-joined header (`ENST00000570013.5_ENSG..._GANC_010_...`), which the anchored Ensembl `DB_PATTERN` can't match, so it falls to `find_embedded_accession`. There, the NCBI RefSeq `EMBEDDED_PATTERN` is listed **first** and searched unanchored with `\d+`, so it matches `NC_010` inside `GA``NC_010` (a gene-symbol token) before the Ensembl embedded pattern (parse_ids.py:520) ever runs. Mapping: `GANC_010`→`NC_010`, `PRNT_003`→`NT_003`, `PCNP_201`→`NP_201`, `Lexm_003`→`xm_003`, `Pianp_205`→`np_205`, `GMNC_002`→`NC_002`.
+- **Fix:** tightened the NCBI embedded regex in [parse_ids.py](workflow/scripts/parse_ids.py) with a left word-boundary `(?<![A-Za-z0-9])` and `\d{6,}` (real RefSeq accessions never start mid-word and always carry ≥6 digits). The Ensembl embedded pattern now wins → these 11 route to the `ensembl` resolver. Verified: junk substrings return `None`, real embedded RefSeq (`gi|…|ref|NM_000014.6|`, `lcl|NC_000001.11`) still match.
+- **⏸ Why deferred:** `parse_ids.py` is **Stage 1** — changing it invalidates the whole DAG and forces a full pipeline rerun. Per decision (2026-07-13) the fix is committed to isolated branch **`fix/parse-ids-embedded-ncbi-substring`** (commit `208b215`), to be **merged when a full rerun is acceptable**. Not on `fix/phytozome-jgi-download-id`.
 
 ---
 
@@ -249,6 +314,37 @@ Of 22,249 classified IDs, ~8,844 never resolve to coordinates at all (obsolete I
 
 ---
 
+## Resolution-coverage roadmap (matched_not_found — 5,993 rows)
+
+_Added 2026-07-12. Source: [reports/reason_resolution_brainstorm/MASTER_ROI_RANKING.md](reports/reason_resolution_brainstorm/MASTER_ROI_RANKING.md) + per-reason files. This extends **L4** — it's the resolve-stage counterpart to the extract-stage audit above. Distinct from extraction failures (397); these are IDs that classify but never reach coordinates._
+
+Current `matched_not_found` breakdown (from `results/matched_not_found.tsv`):
+
+| Reason | Rows | ROI strategy | Effort / expected recovery |
+|---|---|---|---|
+| `not_found_in_gramene` | 1,935 | Legacy rice/maize crosswalk + versioned plant fallback (#2) | M-H / 40-75% |
+| `missing_coordinates` | 1,483 | Organism-aware GTF fallback after NCBI coord failure (#3) | M / 20-40% |
+| `phytozome_gff_no_match_oryza_sativa` | 1,025 | RAP/MSU legacy rice ID crosswalk (#2) — **not** the JGI-auth fix; these are ID-version mismatches vs the GFF3 we have | M-H / high |
+| `matched_noncode2016_no_coordinates` | 674 | NONCODE normalized/fuzzy match + species fallback (#4) | M / 70-90% for the good-coverage subset |
+| `phytozome_gff_no_match_zea_mays` | 644 | Legacy maize (Zm00001d vs B73 v5) crosswalk (#2) | M-H / high |
+| `not_found_in_any_noncode` | 210 | NONCODE base-ID normalization (#4) | M / 40-90% |
+| `assembly_mapping_failed:NC_008405.2` / `NC_008394.4` | 15 | ✅ **DONE** — static NC→GCF exception map (#5): rice Build 4.0 = `GCF_000005425.2` | **L / ~100%** |
+| `worm_gtf_not_resolved` | 5 | Multi-release worm fallback (#7) | L-M / 60-80% |
+| `sgd_gtf_not_resolved` | 1 | ✅ **DONE** — `Source:SGD;Acc:*` canonicalization + `dbxref` index key (#6) | L / ~100% |
+| `phytozome_gff_no_match_citrus_sinensis` | 1 | ID-version mismatch (not a parser gap) — needs crosswalk, out of #6 scope | — |
+
+**Highest ROI = Strategy #1 (Source Attribution Backbone), cross-cutting.** Persist transcript provenance (source tool/paper/DB/release) from Stage 0 through merge. Immediate payoff with *current* data — no new resolver logic: 38.5% of `matched_not_found` rows already carry a tool tag (`not_found_in_gramene` 767, `missing_coordinates` 697, phytozome zea 563, phytozome oryza 258). It routes every large bucket below with one architectural change.
+
+**Recommended execution order:** #1 backbone → #2 legacy rice/maize + versioned plant fallback (biggest bucket volume) → #3 organism-aware GTF fallback → #4 NONCODE normalization → #5/#6 low-effort near-100% tails → #7 worm → #8 optional alignment deep-recovery (gated by config).
+
+**Note on phytozome buckets:** `phytozome_gff_no_match_*` (1,669) is an **ID-version-mismatch** problem (legacy RAP/MSU/Zm IDs not present in the GFF3 build), *not* the JGI-auth gap just fixed. The auth fix adds *new species*; these buckets need *crosswalk tables* for species we already have.
+
+**Stage 0 coverage gaps to close (prereq for #1):** CNIT + FEELnc datasets absent locally (`n_sequences_loaded = 0`); PreLnc now wired as a Stage 0 source (train/test FASTA for human/mouse/cow/Arabidopsis/rice/maize — broadens plant provenance).
+
+**Highest-value external input:** a source mapping table from the paper (transcript ID → originating DB/tool/paper/release). Unlocks #1 and #2 routing precision immediately.
+
+---
+
 ## Per-problem deep dives (subagent outputs)
 
 Each concern was investigated in isolation; full findings in `audit/`:
@@ -279,6 +375,13 @@ Each concern was investigated in isolation; full findings in `audit/`:
 10. ~~**[bottleneck] Make `download_assembly.py` consume `fasta_url`**~~ ✅ **DONE (2026-07-12)** — implemented manifest-driven downloads (`cache_key`,`fasta_url`), URL-slug fan-out, and downloader URL-first behavior with NCBI fallback. Measured impact: **extracted 12,163 → 13,199**, `assembly_not_cached 1,322 → 314`.
 11. ~~**[bottleneck] Populate `fasta_url` for URL-less non-NCBI rows**~~ 🟡 **PARTIALLY DONE (2026-07-12)** — plant stream now fills by `organism` fallback in merge (541/541). `plant_gtf` and most phytozome rows now carry URL metadata in merged output; however phytozome genome FASTA remains unavailable as a reliable source in current config workflow. **Decision:** defer phytozome (203 rows).
 12. **[bottleneck, optional] Handle roman-numeral + dead assemblies** — roman↔arabic chrom mapping for worm/noncode `chrIV`; the "~48 dead assemblies" collapsed to **2** after the FTP-URL refactor + retry (2026-07-12): `GCF_000001215.3` (404, use `.4`) and `GCF_000001545.5` (`ponAbe2`, folder removed). Bump to current versions or accept as lost. Lowest ROI. See **L2**.
+
+### Run-failure fixes (new — from 2026-07-13 run)
+
+16. ~~**[blocker] Filter junk IDs before NCBI epost**~~ ✅ **DONE (2026-07-13)** — `resolve_ncbi_genbank.py` now quarantines non-accession IDs (`xm_003`, `np_205`, `np_206`, `nc_201`) via `ACCESSION_RE` before `fetcher.fetch()`/`Entrez.epost`, routing them to unresolved as `invalid_accession`. Unblocks the ~1,615 valid IDs that the crash was discarding. See **TB-1**.
+17. ~~**[blocker] Fix phytozome config-key/`gtf:`-basename mismatch**~~ ✅ **DONE (2026-07-13)** — moved to a `resources/phytozome/<species>/<source_name>.gff3.gz` folder layout so the `{species}` wildcard equals the config key and `sources.get(species)` resolves `genome_id`; kept the `.gene` (not `gene_exons`) variant, pinned via `manifest.json` `portal_file_name`; wrapped `download_phytozome_gtf.py` so no failure is silent. citrus/sorghum/ricinus download immediately; oryza is PURGED (restore workflow). See **TB-2**.
+18. **[transient] Rerun tomato metadata** — `download_metadata_table` for solanum_lycopersicum failed on transient BioMart; rerun, or rely on the already-downloaded plant GTF. See **L5**.
+19. **[deferred-merge] Merge Ensembl-mislabel parse fix** — ✅ fixed on branch **`fix/parse-ids-embedded-ncbi-substring`** (commit `208b215`); **not merged** because it's a Stage-1 change that forces a full rerun. Merge when a full rerun is scheduled. See **TB-3**.
 
 ### Cleanup (unchanged)
 
@@ -330,9 +433,24 @@ awk -F'\t' 'FNR>1{print $NF}' results/sequences/*.failed.tsv | sort | uniq -c
 
 **Blockers resolved, #9 and #10 landed. Extraction at 13,199 (~85%). Remaining work is targeted cleanup + deferred phytozome policy.**
 
+### Priority -1: Fix 2026-07-13 run blockers (NEW — actionables #16–18)
+- **#16 — NCBI epost crash (TB-1):** ✅ **DONE (2026-07-13)** — junk IDs filtered before epost in `resolve_ncbi_genbank.py`.
+- **#17 — phytozome key mismatch (TB-2):** ✅ DONE (2026-07-13) — folder-per-species layout (`resources/phytozome/<species>/<source_name>.gff3.gz`), `.gene` pinned via manifest, failures now logged. oryza still needs a JGI restore (PURGED).
+- **#18 — tomato BioMart (L5):** 🟡 transient; rerun.
+- **#19 — Ensembl mislabel (TB-3):** ✅ fixed on branch `fix/parse-ids-embedded-ncbi-substring` (`208b215`), ⏸ **deferred merge** — Stage-1 change forces a full rerun; merge when one is scheduled.
+
+### Priority 0: Land the phytozome/JGI unblock (NEW 2026-07-12)
+- JGI auth is now implemented + 5 new species wired. **Re-run parse → phytozome resolution → merge** to grow the resolved set with the new species (vitis/potato/amborella/chlamydomonas/physcomitrella). See [Phytozome/JGI unblock](#phytozomejgi-unblock-2026-07-12).
+- To also *extract* phytozome coordinates, add genome-FASTA entries to the manifest (same token) — otherwise the new rows resolve but stay `assembly_not_cached`.
+
+**⚠️ Unblock to run *now* while JGI restores are pending (2026-07-12):** `resolve_phytozome_gtf` needs **all** configured GFF3s present and sits **upstream of merge→extract→report**, so any single missing phytozome file blocks the whole pipeline (not just the phytozome stream). Two problems found + fixed so a full run can proceed today:
+1. **Config path mismatch (fixed).** `citrus/sorghum/ricinus/oryza` pointed at `*.gene_exons.gff3.gz` filenames not on disk (disk has `*.gene.gff3.gz`). Because the `download_phytozome_gtf` script keys by *species name* while the resolve rule requests files by their `gtf:` *basename*, the mismatched paths triggered JGI downloads that fail with "manifest entry not found". Repointed the 4 `gtf:` paths to the existing `.gene.gff3.gz` files (verified they carry `mRNA` features the resolver reads). `touch`ed them so they postdate `manifest.json` (else mtime forces the same failing rebuild).
+2. **JGI-only species deferred.** `solanum_tuberosum` (no local file), `vitis_vinifera` + `physcomitrella_patens` (**PURGED**, restore reqs pending, ≤24h) are commented out in `config/phytozome_gtf_sources.yaml` with dated re-enable notes. amborella + chlamydomonas are RESTORED and already downloaded, so they stay in.
+
+Result: dry-run drops from 37 → 29 jobs with **0 phytozome download jobs** and no missing inputs. Run `snakemake --profile profiles/default --rerun-triggers=mtime`. When JGI restores vitis/physcomitrella (poll `files.jgi.doe.gov/request_archived_files/requests/652368`), uncomment them (and add solanum_tuberosum's GFF3), then rerun `resolve_phytozome_gtf` + downstream.
+
 ### Priority 1: Residual non-NCBI URL gaps (post-#10)
-- `assembly_not_cached` residual is 314: phytozome 203 (deferred), ensembl 53, flybase 33, noncode(+v4) 25.
-- Keep phytozome deferred unless/until an authenticated genome FASTA source is added.
+- `assembly_not_cached` residual is 314: phytozome 203 (extraction still needs genome FASTA — see Priority 0), ensembl 53, flybase 33, noncode(+v4) 25.
 - For ensembl/flybase/noncode residuals, continue same manifest mechanism by filling reliable `fasta_url` in their resolver/config paths.
 - When retrying downloads, target only the relevant `resources/cache/<cache_key>/.download_done` files derived from failed rows; do not force the already-ok assemblies.
 - Prefer [workflow/scripts/list_failed_download_targets.py](workflow/scripts/list_failed_download_targets.py) over one-off shell parsing when generating the target list.

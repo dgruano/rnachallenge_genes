@@ -29,7 +29,7 @@ from logging_utils import get_logger
 
 # ── Snakemake interface ──────────────────────────────────────────────────────
 # Only initialize snakemake variables when running under Snakemake
-if 'snakemake' in globals():
+if "snakemake" in globals():
     log = get_logger("resolve_ensembl_assembly_accessions", snakemake.log[0])
     input_resolved = snakemake.input.resolved
     out_resolved = snakemake.output.resolved
@@ -37,17 +37,17 @@ if 'snakemake' in globals():
 
 # ── Hardcoded GRC* → GCF_/GCA_ mapping ───────────────────────────────────────
 ASSEMBLY_NAME_MAPPING = {
-    "GRCH38": "GCF_000001405.40",    # Homo sapiens (human)
-    "GRCH37": "GCF_000001405.39",    # Homo sapiens GRCh37 (older)
-    "GRCZ11": "GCF_000002035.6",     # Danio rerio (zebrafish)
-    "GRCZ10": "GCF_000002035.5",     # Danio rerio (older)
-    "GRCRH1": "GCF_000008735.2",     # Macaca mulatta (rhesus macaque)
-    "GRCM39": "GCF_000001635.27",    # Mus musculus (mouse)
-    "GRCM38": "GCF_000001635.26",    # Mus musculus (older)
-    "GRCH13": "GCF_000004545.3",     # Ciona intestinalis (sea squirt)
-    "BDGP6": "GCF_000001215.4",      # Drosophila melanogaster (fruit fly)
-    "BDGP5": "GCF_000001215.3",      # Drosophila melanogaster (older)
-    "BDGP6_32": "GCF_000001215.4",   # Drosophila release variant
+    "GRCH38": "GCF_000001405.40",  # Homo sapiens (human)
+    "GRCH37": "GCF_000001405.39",  # Homo sapiens GRCh37 (older)
+    "GRCZ11": "GCF_000002035.6",  # Danio rerio (zebrafish)
+    "GRCZ10": "GCF_000002035.5",  # Danio rerio (older)
+    "GRCRH1": "GCF_000008735.2",  # Macaca mulatta (rhesus macaque)
+    "GRCM39": "GCF_000001635.27",  # Mus musculus (mouse)
+    "GRCM38": "GCF_000001635.26",  # Mus musculus (older)
+    "GRCH13": "GCF_000004545.3",  # Ciona intestinalis (sea squirt)
+    "BDGP6": "GCF_000001215.4",  # Drosophila melanogaster (fruit fly)
+    "BDGP5": "GCF_000001215.3",  # Drosophila melanogaster (older)
+    "BDGP6_32": "GCF_000001215.4",  # Drosophila release variant
     "ARS-UCD2.0": "GCF_002263795.2",  # Bos taurus (cattle ARS-UCD2.0)
 }
 
@@ -125,7 +125,9 @@ def ensembl_ftp_urls(
         return None, None
     species_cap = "_".join(w.capitalize() for w in organism.split("_"))
     base = f"https://ftp.ensembl.org/pub/release-{release}"
-    fasta_url = f"{base}/fasta/{organism}/dna/{species_cap}.{assembly_name}.dna.toplevel.fa.gz"
+    fasta_url = (
+        f"{base}/fasta/{organism}/dna/{species_cap}.{assembly_name}.dna.toplevel.fa.gz"
+    )
     gtf_url = f"{base}/gtf/{organism}/{species_cap}.{assembly_name}.{release}.gtf.gz"
     return fasta_url, gtf_url
 
@@ -162,23 +164,29 @@ def filter_and_resolve_ensembl(
         if mapped:
             row_dict = row.to_dict()
             normalized = normalize_build_name(str(assembly_val))
-            row_dict["assembly_name"] = ASSEMBLY_ENSEMBL_FTP.get(normalized, str(assembly_val))
+            row_dict["assembly_name"] = ASSEMBLY_ENSEMBL_FTP.get(
+                normalized, str(assembly_val)
+            )
             row_dict["assembly_accession"] = mapped
             asm_ftp_name = ASSEMBLY_ENSEMBL_FTP.get(normalized)
             if asm_ftp_name:
                 organism = str(row.get("organism", "")).strip()
-                fasta_url, gtf_url = ensembl_ftp_urls(organism, asm_ftp_name, ensembl_release)
+                fasta_url, gtf_url = ensembl_ftp_urls(
+                    organism, asm_ftp_name, ensembl_release
+                )
                 row_dict["fasta_url"] = fasta_url
                 row_dict["gtf_url"] = gtf_url
                 row_dict["gtf_format"] = "gtf"
             resolved_rows.append(row_dict)
         else:
             # Could not map - goes to unresolved
-            unresolved_rows.append({
-                "transcript_id": row.get("transcript_id"),
-                "db_source": row.get("db_source", "ensembl"),
-                "reason": f"grc_mapping_failed:{assembly_val}",
-            })
+            unresolved_rows.append(
+                {
+                    "transcript_id": row.get("transcript_id"),
+                    "db_source": row.get("db_source", "ensembl"),
+                    "reason": f"grc_mapping_failed:{assembly_val}",
+                }
+            )
 
     resolved = pd.DataFrame(resolved_rows) if resolved_rows else pd.DataFrame()
     unresolved = pd.DataFrame(unresolved_rows) if unresolved_rows else pd.DataFrame()
@@ -188,7 +196,7 @@ def filter_and_resolve_ensembl(
 
 # ── Main processing ────────────────────────────────────────────────────────
 # Only run when executed by Snakemake
-if 'snakemake' in globals():
+if "snakemake" in globals():
     log.info("Stage 2d: Resolving Ensembl assembly accessions")
 
     try:
@@ -216,12 +224,16 @@ if 'snakemake' in globals():
     ensembl_release = str(snakemake.config.get("ensembl_release", ""))
 
     # Filter and resolve using the dedicated function
-    resolved, unresolved = filter_and_resolve_ensembl(df, ensembl_release=ensembl_release)
+    resolved, unresolved = filter_and_resolve_ensembl(
+        df, ensembl_release=ensembl_release
+    )
 
     # Log statistics
     grc_mask = df["assembly_accession"].apply(is_grc_assembly_accession)
     needs_mapping = df[grc_mask]
-    log.info(f"Found {len(needs_mapping)} row(s) with GRC* assembly names needing mapping")
+    log.info(
+        f"Found {len(needs_mapping)} row(s) with GRC* assembly names needing mapping"
+    )
 
     # Write outputs
     log.info(f"Writing {len(resolved)} resolved row(s) to {out_resolved}")
@@ -231,16 +243,22 @@ if 'snakemake' in globals():
             cols_to_write = [c for c in RESOLVED_COLS if c in resolved.columns]
             # If there are extra columns, keep them at the end
             extra_cols = [c for c in resolved.columns if c not in RESOLVED_COLS]
-            resolved[cols_to_write + extra_cols].to_csv(out_resolved, sep="\t", index=False)
+            resolved[cols_to_write + extra_cols].to_csv(
+                out_resolved, sep="\t", index=False
+            )
         else:
-            pd.DataFrame(columns=RESOLVED_COLS).to_csv(out_resolved, sep="\t", index=False)
+            pd.DataFrame(columns=RESOLVED_COLS).to_csv(
+                out_resolved, sep="\t", index=False
+            )
     except IOError as e:
         log.error(f"Failed to write resolved output to {out_resolved}: {e}")
         raise
 
     try:
         if len(unresolved) > 0:
-            log.warning(f"Writing {len(unresolved)} unresolved row(s) to {out_unresolved}")
+            log.warning(
+                f"Writing {len(unresolved)} unresolved row(s) to {out_unresolved}"
+            )
             unresolved.to_csv(out_unresolved, sep="\t", index=False)
         else:
             log.info("No unresolved rows")

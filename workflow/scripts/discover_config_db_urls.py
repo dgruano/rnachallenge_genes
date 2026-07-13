@@ -61,7 +61,9 @@ log.info(f"discover_config_db_urls: reading config key '{config_key}'")
 
 sources = snakemake.config.get(config_key, {})
 if not sources:
-    log.warning(f"  Config key '{config_key}' is empty or missing; writing empty URL table")
+    log.warning(
+        f"  Config key '{config_key}' is empty or missing; writing empty URL table"
+    )
     pd.DataFrame(columns=URLS_COLS).to_csv(out_urls, sep="\t", index=False)
     log.info("Done.")
     exit(0)
@@ -76,18 +78,24 @@ for entry_key, entry in sources.items():
     # 'url' is the GTF URL in all existing config files
     gtf_url = entry.get("url") or entry.get("gtf_url")
     assembly_accession = entry.get("assembly_accession")
-    if assembly_accession is not None and str(assembly_accession).lower() in ("null", "none", ""):
+    if assembly_accession is not None and str(assembly_accession).lower() in (
+        "null",
+        "none",
+        "",
+    ):
         assembly_accession = pd.NA
 
-    rows.append({
-        "db_source": db_source,
-        "assembly_name": entry.get("assembly_name", entry_key),
-        "assembly_accession": assembly_accession,
-        "fasta_url": entry.get("fasta_url"),
-        "gtf_url": gtf_url,
-        "gtf_format": entry.get("gtf_format"),
-        "organism": entry.get("organism", entry_key),
-    })
+    rows.append(
+        {
+            "db_source": db_source,
+            "assembly_name": entry.get("assembly_name", entry_key),
+            "assembly_accession": assembly_accession,
+            "fasta_url": entry.get("fasta_url"),
+            "gtf_url": gtf_url,
+            "gtf_format": entry.get("gtf_format"),
+            "organism": entry.get("organism", entry_key),
+        }
+    )
 
 df_urls = pd.DataFrame(rows, columns=URLS_COLS)
 log.info(f"Writing {len(df_urls)} assembly URL row(s) to {out_urls}")

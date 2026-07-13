@@ -11,6 +11,9 @@ jobs: 100                          # Max concurrent SLURM jobs
 latency-wait: 60                   # Seconds to wait for output files after job completes
 rerun-incomplete: true
 keep-going: true                   # Continue pipeline even if some jobs fail
+rerun-triggers: mtime              # Only file mtime triggers reruns — editing a script/config
+                                   # no longer cascades the whole DAG. Force the rule you changed
+                                   # explicitly: `snakemake --forcerun <rule>`.
 printshellcmds: true
 show-failed-logs: true
 

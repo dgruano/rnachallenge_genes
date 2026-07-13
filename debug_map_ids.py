@@ -24,24 +24,35 @@ _GI_RE = re.compile(
 )
 
 _ACCESSION_PATTERNS = [
-    re.compile(r'\b((?:NM|NR|XM|XR|NP|XP|NG|NC|NT|NW|NZ)_\d+(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(ENS[A-Z]*T\d{11}(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(ENS[A-Z]*G\d{11}(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(uc\d{3}[a-z]{3}\.\d+)\b', re.IGNORECASE),
-    re.compile(r'\b(NON[A-Z]{3}[TG]\d+\.\d+)\b'),
-    re.compile(r'\b(AT[0-9CM]G\d{5}(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(Os\d{2}g\d{7})\b', re.IGNORECASE),
-    re.compile(r'\b(LOC_Os\d{2}g\d{5})\b', re.IGNORECASE),
-    re.compile(r'\b(Glyma\.\d{2}G\d{6}(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(Zm\d{5}g\d{6})\b', re.IGNORECASE),
-    re.compile(r'\b(GRMZM\w+)\b', re.IGNORECASE),
-    re.compile(r'\b(Solyc\d{2}g\d{6}\.\d+\.\d+)\b', re.IGNORECASE),
-    re.compile(r'\b(WBGene\d{8})\b', re.IGNORECASE),
-    re.compile(r'\b(FBtr\d{7})\b', re.IGNORECASE),
-    re.compile(r'\b(Y[A-P][LR]\d{3}[WC](?:_[A-Z])?)\b', re.IGNORECASE),
+    re.compile(
+        r"\b((?:NM|NR|XM|XR|NP|XP|NG|NC|NT|NW|NZ)_\d+(?:\.\d+)?)\b", re.IGNORECASE
+    ),
+    re.compile(r"\b(ENS[A-Z]*T\d{11}(?:\.\d+)?)\b", re.IGNORECASE),
+    re.compile(r"\b(ENS[A-Z]*G\d{11}(?:\.\d+)?)\b", re.IGNORECASE),
+    re.compile(r"\b(uc\d{3}[a-z]{3}\.\d+)\b", re.IGNORECASE),
+    re.compile(r"\b(NON[A-Z]{3}[TG]\d+\.\d+)\b"),
+    re.compile(r"\b(AT[0-9CM]G\d{5}(?:\.\d+)?)\b", re.IGNORECASE),
+    re.compile(r"\b(Os\d{2}g\d{7})\b", re.IGNORECASE),
+    re.compile(r"\b(LOC_Os\d{2}g\d{5})\b", re.IGNORECASE),
+    re.compile(r"\b(Glyma\.\d{2}G\d{6}(?:\.\d+)?)\b", re.IGNORECASE),
+    re.compile(r"\b(Zm\d{5}g\d{6})\b", re.IGNORECASE),
+    re.compile(r"\b(GRMZM\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(Solyc\d{2}g\d{6}\.\d+\.\d+)\b", re.IGNORECASE),
+    re.compile(r"\b(WBGene\d{8})\b", re.IGNORECASE),
+    re.compile(r"\b(FBtr\d{7})\b", re.IGNORECASE),
+    re.compile(r"\b(Y[A-P][LR]\d{3}[WC](?:_[A-Z])?)\b", re.IGNORECASE),
 ]
 
-_FASTA_SUFFIXES = {".fa", ".fasta", ".faa", ".fna", ".fa.gz", ".fasta.gz", ".faa.gz", ".fna.gz"}
+_FASTA_SUFFIXES = {
+    ".fa",
+    ".fasta",
+    ".faa",
+    ".fna",
+    ".fa.gz",
+    ".fasta.gz",
+    ".faa.gz",
+    ".fna.gz",
+}
 
 
 def normalise_id(raw_id: str) -> str:
@@ -125,7 +136,9 @@ def parse_fasta_full(fasta_path: Path):
                     raw = tf.extractfile(member)
                     if raw is None:
                         continue
-                    fh = io.TextIOWrapper(gzip.open(raw, "rt") if ml.endswith(".gz") else raw)
+                    fh = io.TextIOWrapper(
+                        gzip.open(raw, "rt") if ml.endswith(".gz") else raw
+                    )
                     n, rh, ids = _parse_handle(fh)
                     n_sequences += n
                     raw_headers.update(rh)
@@ -137,7 +150,9 @@ def parse_fasta_full(fasta_path: Path):
                     if not any(ml.endswith(s) for s in _FASTA_SUFFIXES):
                         continue
                     with zf.open(member) as raw:
-                        fh = io.TextIOWrapper(gzip.open(raw, "rt") if ml.endswith(".gz") else raw)
+                        fh = io.TextIOWrapper(
+                            gzip.open(raw, "rt") if ml.endswith(".gz") else raw
+                        )
                         n, rh, ids = _parse_handle(fh)
                         n_sequences += n
                         raw_headers.update(rh)

@@ -19,24 +19,35 @@ _GI_RE = re.compile(
 )
 
 _ACCESSION_PATTERNS = [
-    re.compile(r'\b((?:NM|NR|XM|XR|NP|XP|NG|NC|NT|NW|NZ)_\d+(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(ENS[A-Z]*T\d{11}(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(ENS[A-Z]*G\d{11}(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(uc\d{3}[a-z]{3}\.\d+)\b', re.IGNORECASE),
-    re.compile(r'\b(NON[A-Z]{3}[TG]\d+\.\d+)\b'),
-    re.compile(r'\b(AT[0-9CM]G\d{5}(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(Os\d{2}g\d{7})\b', re.IGNORECASE),
-    re.compile(r'\b(LOC_Os\d{2}g\d{5})\b', re.IGNORECASE),
-    re.compile(r'\b(Glyma\.\d{2}G\d{6}(?:\.\d+)?)\b', re.IGNORECASE),
-    re.compile(r'\b(Zm\d{5}g\d{6})\b', re.IGNORECASE),
-    re.compile(r'\b(GRMZM\w+)\b', re.IGNORECASE),
-    re.compile(r'\b(Solyc\d{2}g\d{6}\.\d+\.\d+)\b', re.IGNORECASE),
-    re.compile(r'\b(WBGene\d{8})\b', re.IGNORECASE),
-    re.compile(r'\b(FBtr\d{7})\b', re.IGNORECASE),
-    re.compile(r'\b(Y[A-P][LR]\d{3}[WC](?:_[A-Z])?)\b', re.IGNORECASE),
+    re.compile(
+        r"\b((?:NM|NR|XM|XR|NP|XP|NG|NC|NT|NW|NZ)_\d+(?:\.\d+)?)\b", re.IGNORECASE
+    ),
+    re.compile(r"\b(ENS[A-Z]*T\d{11}(?:\.\d+)?)\b", re.IGNORECASE),
+    re.compile(r"\b(ENS[A-Z]*G\d{11}(?:\.\d+)?)\b", re.IGNORECASE),
+    re.compile(r"\b(uc\d{3}[a-z]{3}\.\d+)\b", re.IGNORECASE),
+    re.compile(r"\b(NON[A-Z]{3}[TG]\d+\.\d+)\b"),
+    re.compile(r"\b(AT[0-9CM]G\d{5}(?:\.\d+)?)\b", re.IGNORECASE),
+    re.compile(r"\b(Os\d{2}g\d{7})\b", re.IGNORECASE),
+    re.compile(r"\b(LOC_Os\d{2}g\d{5})\b", re.IGNORECASE),
+    re.compile(r"\b(Glyma\.\d{2}G\d{6}(?:\.\d+)?)\b", re.IGNORECASE),
+    re.compile(r"\b(Zm\d{5}g\d{6})\b", re.IGNORECASE),
+    re.compile(r"\b(GRMZM\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(Solyc\d{2}g\d{6}\.\d+\.\d+)\b", re.IGNORECASE),
+    re.compile(r"\b(WBGene\d{8})\b", re.IGNORECASE),
+    re.compile(r"\b(FBtr\d{7})\b", re.IGNORECASE),
+    re.compile(r"\b(Y[A-P][LR]\d{3}[WC](?:_[A-Z])?)\b", re.IGNORECASE),
 ]
 
-_FASTA_SUFFIXES = {".fa", ".fasta", ".faa", ".fna", ".fa.gz", ".fasta.gz", ".faa.gz", ".fna.gz"}
+_FASTA_SUFFIXES = {
+    ".fa",
+    ".fasta",
+    ".faa",
+    ".fna",
+    ".fa.gz",
+    ".fasta.gz",
+    ".faa.gz",
+    ".fna.gz",
+}
 
 
 def normalise_id(raw_id: str) -> str:
@@ -96,11 +107,13 @@ def parse_fasta_manual(file_handle):
         line = line.rstrip("\n\r")
         if line.startswith(">"):
             if current_id is not None:
-                records.append({
-                    "id": current_id,
-                    "description": current_desc,
-                    "seq": "".join(current_seq)
-                })
+                records.append(
+                    {
+                        "id": current_id,
+                        "description": current_desc,
+                        "seq": "".join(current_seq),
+                    }
+                )
             parts = line[1:].split(None, 1)
             current_id = parts[0]
             current_desc = line[1:] if len(line) > 1 else parts[0]
@@ -109,11 +122,9 @@ def parse_fasta_manual(file_handle):
             current_seq.append(line)
 
     if current_id is not None:
-        records.append({
-            "id": current_id,
-            "description": current_desc,
-            "seq": "".join(current_seq)
-        })
+        records.append(
+            {"id": current_id, "description": current_desc, "seq": "".join(current_seq)}
+        )
 
     return records
 
@@ -137,7 +148,9 @@ def parse_fasta_full(fasta_path: Path):
                     raw = tf.extractfile(member)
                     if raw is None:
                         continue
-                    fh = io.TextIOWrapper(gzip.open(raw, "rt") if ml.endswith(".gz") else raw)
+                    fh = io.TextIOWrapper(
+                        gzip.open(raw, "rt") if ml.endswith(".gz") else raw
+                    )
                     records = parse_fasta_manual(fh)
                     for rec in records:
                         n_sequences += 1
@@ -152,7 +165,9 @@ def parse_fasta_full(fasta_path: Path):
                     if not any(ml.endswith(s) for s in _FASTA_SUFFIXES):
                         continue
                     with zf.open(member) as raw:
-                        fh = io.TextIOWrapper(gzip.open(raw, "rt") if ml.endswith(".gz") else raw)
+                        fh = io.TextIOWrapper(
+                            gzip.open(raw, "rt") if ml.endswith(".gz") else raw
+                        )
                         records = parse_fasta_manual(fh)
                         for rec in records:
                             n_sequences += 1
@@ -222,7 +237,10 @@ def main():
 
         tool_id_sets[tool] = all_ids
         tool_raw_headers[tool] = all_headers
-        print(f"  [{tool}]: {n_seqs:,} sequences | {len(all_ids):,} unique IDs", flush=True)
+        print(
+            f"  [{tool}]: {n_seqs:,} sequences | {len(all_ids):,} unique IDs",
+            flush=True,
+        )
 
     # Parse RNAChallenge and find Zm00001d transcripts
     print(f"\nParsing RNAChallenge FASTA: {challenge_fasta}", flush=True)

@@ -22,14 +22,48 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Optional
 
-from Bio import Entrez
 import pandas as pd
+from Bio import Entrez
 
 # ── Constants ────────────────────────────────────────────────────────────────
 _GENEID_ATTR_RE = re.compile(r'GeneID[="](\d+)', re.IGNORECASE)
 _BATCH_SIZE = 50
 _RATE_LIMIT_DELAY = 0.02
 NCBI_FTP_ALL_BASE = "https://ftp.ncbi.nlm.nih.gov/genomes/all"
+
+# Legacy RefSeq chromosome accessions whose GenBank records carry no
+# ``Assembly:`` dbxref and whose nuccore→assembly elink is empty, so the
+# efetch-based mapping in resolve_ncbi_assembly_accessions returns None.
+# ROI strategy #5: map them statically to the assembly they belong to.
+#
+# Rice (Oryza sativa Japonica) "Build 4.0" == GCF_000005425.2. The input
+# coordinates were computed against these very chromosome sequences, so this
+# is the correct assembly to slice from (no version/coordinate drift) — the
+# assembly report lists Assigned-Molecule "1".."12"/"MT"/"Pltd", which the
+# chrom-translation step already uses to map the friendly chrom back to the
+# NC_ accession. Verified against the Build 4.0 assembly_report.txt.
+NC_TO_ASSEMBLY_EXCEPTIONS = {
+    "NC_008394.4": "GCF_000005425.2",  # chromosome 1
+    "NC_008395.2": "GCF_000005425.2",  # chromosome 2
+    "NC_008396.2": "GCF_000005425.2",  # chromosome 3
+    "NC_008397.2": "GCF_000005425.2",  # chromosome 4
+    "NC_008398.2": "GCF_000005425.2",  # chromosome 5
+    "NC_008399.2": "GCF_000005425.2",  # chromosome 6
+    "NC_008400.2": "GCF_000005425.2",  # chromosome 7
+    "NC_008401.2": "GCF_000005425.2",  # chromosome 8
+    "NC_008402.2": "GCF_000005425.2",  # chromosome 9
+    "NC_008403.2": "GCF_000005425.2",  # chromosome 10
+    "NC_008404.2": "GCF_000005425.2",  # chromosome 11
+    "NC_008405.2": "GCF_000005425.2",  # chromosome 12
+    "NC_011033.1": "GCF_000005425.2",  # mitochondrion
+    "NC_001320.1": "GCF_000005425.2",  # chloroplast (Pltd)
+    "NC_001751.1": "GCF_000005425.2",  # B1 mitochondrial plasmid
+}
+
+
+def assembly_from_exceptions(genomic_acc: str) -> Optional[str]:
+    """Return the GCF_/GCA_ assembly for a known legacy accession, else None."""
+    return NC_TO_ASSEMBLY_EXCEPTIONS.get(genomic_acc)
 
 
 def ncbi_ftp_species_dir(accession: str, ftp_base: str = NCBI_FTP_ALL_BASE) -> str:
@@ -60,6 +94,7 @@ def _parse_gtf_attr(attribute: str, key: str) -> str:
 
 # ── Batch-efficient NCBI API wrapper ─────────────────────────────────────────
 
+
 def _retry_ncbi_call(fn, label: str, max_retries: int = 3, retry_wait: float = 0.5):
     """Call fn(); retry on exception with exponential backoff."""
     for attempt in range(1, max_retries + 1):
@@ -70,10 +105,13 @@ def _retry_ncbi_call(fn, label: str, max_retries: int = 3, retry_wait: float = 0
                 wait_time = retry_wait * attempt
                 time.sleep(wait_time)
             else:
-                raise RuntimeError(f"{label} failed after {max_retries} attempts: {exc}")
+                raise RuntimeError(
+                    f"{label} failed after {max_retries} attempts: {exc}"
+                )
 
 
 # ── Assembly accession → FTP path resolution ─────────────────────────────────
+
 
 def resolve_assembly_ftp(
     assembly_accessions: list[str],
@@ -109,6 +147,7 @@ def resolve_assembly_ftp(
     # Phase 1: esearch per assembly to collect UIDs
     asm_to_uid: dict[str, str] = {}
     for asm in assembly_accessions:
+
         def _search(a=asm):
             handle = Entrez.esearch(
                 db="assembly", term=f"{a}[Assembly Accession]", retmax=1
@@ -118,7 +157,9 @@ def resolve_assembly_ftp(
             return result
 
         try:
-            search = _retry_ncbi_call(_search, f"esearch(assembly) {asm}", max_retries, retry_wait)
+            search = _retry_ncbi_call(
+                _search, f"esearch(assembly) {asm}", max_retries, retry_wait
+            )
         except RuntimeError as exc:
             log.error(str(exc))
             continue
@@ -191,6 +232,7 @@ def resolve_assembly_ftp(
 
 # ── GTF download and caching ────────────────────────────────────────────────
 
+
 def download_gtf(
     assembly_acc: str,
     urls: list[str],
@@ -242,7 +284,9 @@ def download_gtf(
         for attempt in range(1, max_retries + 1):
             try:
                 urllib.request.urlretrieve(url, gz_path)
-                log.info(f"  Downloaded → {gz_path} ({gz_path.stat().st_size / 1e6:.1f} MB)")
+                log.info(
+                    f"  Downloaded → {gz_path} ({gz_path.stat().st_size / 1e6:.1f} MB)"
+                )
                 return gz_path
             except Exception as exc:
                 log.warning(
@@ -253,13 +297,18 @@ def download_gtf(
                 if attempt < max_retries:
                     time.sleep(retry_wait * attempt)
 
-        log.warning(f"  All {file_format} download attempts failed for {assembly_acc}, trying next format…")
+        log.warning(
+            f"  All {file_format} download attempts failed for {assembly_acc}, trying next format…"
+        )
 
-    log.error(f"  All download attempts failed for {assembly_acc} (tried {len(urls)} format(s))")
+    log.error(
+        f"  All download attempts failed for {assembly_acc} (tried {len(urls)} format(s))"
+    )
     return None
 
 
 # ── GTF coordinate extraction ──────────────────────────────────────────────
+
 
 def extract_all_from_gtf(
     gtf_gz: Path,
@@ -342,10 +391,10 @@ def extract_all_from_gtf(
                 if gene_id not in gene_ids_needed:
                     continue
                 gene_info[gene_id] = {
-                    "chrom":       parts[0],
-                    "start":       int(parts[3]) - 1,  # GTF 1-based → 0-based
-                    "end":         int(parts[4]),       # GTF inclusive → half-open
-                    "strand":      parts[6],
+                    "chrom": parts[0],
+                    "start": int(parts[3]) - 1,  # GTF 1-based → 0-based
+                    "end": int(parts[4]),  # GTF inclusive → half-open
+                    "strand": parts[6],
                     "gene_symbol": (
                         _parse_gtf_attr(attr, "gene_name")
                         or _parse_gtf_attr(attr, "gene")
@@ -369,12 +418,12 @@ def extract_all_from_gtf(
         if info is None:
             continue
         result[tx_id] = {
-            "gene_id":     gene_id,
+            "gene_id": gene_id,
             "gene_symbol": info["gene_symbol"] or gene_sym,
-            "chrom":       info["chrom"],
-            "start":       info["start"],
-            "end":         info["end"],
-            "strand":      info["strand"],
+            "chrom": info["chrom"],
+            "start": info["start"],
+            "end": info["end"],
+            "strand": info["strand"],
         }
 
     return result
@@ -430,11 +479,13 @@ def extract_annotations_by_geneid(
                 if geneid not in needed:
                     continue
                 gene_features[geneid] = {
-                    "chrom":       parts[0],
-                    "start":       int(parts[3]) - 1,
-                    "end":         int(parts[4]),
-                    "strand":      parts[6],
-                    "gene_symbol": _parse_gtf_attr(attr, "gene_name") or _parse_gtf_attr(attr, "gene") or geneid,
+                    "chrom": parts[0],
+                    "start": int(parts[3]) - 1,
+                    "end": int(parts[4]),
+                    "strand": parts[6],
+                    "gene_symbol": _parse_gtf_attr(attr, "gene_name")
+                    or _parse_gtf_attr(attr, "gene")
+                    or geneid,
                 }
                 needed.discard(geneid)
     except Exception as exc:
@@ -451,18 +502,19 @@ def extract_annotations_by_geneid(
             continue
         for tx_id in tx_ids:
             result[tx_id] = {
-                "gene_id":     geneid,
+                "gene_id": geneid,
                 "gene_symbol": feature["gene_symbol"],
-                "chrom":       feature["chrom"],
-                "start":       feature["start"],
-                "end":         feature["end"],
-                "strand":      feature["strand"],
+                "chrom": feature["chrom"],
+                "start": feature["start"],
+                "end": feature["end"],
+                "strand": feature["strand"],
             }
 
     return result
 
 
 # ── Genomic accession → parent assembly via elink ────────────────────────────
+
 
 def map_genomic_to_assembly_elink(
     accessions: list[str],
@@ -502,6 +554,7 @@ def map_genomic_to_assembly_elink(
     # ── Phase 1: accession string → nuccore UID (one esearch per accession) ──
     acc_to_uid: dict[str, str] = {}
     for acc in accessions:
+
         def _search(a=acc):
             handle = Entrez.esearch(db="nuccore", term=f"{a}[Accession]", retmax=1)
             rec = Entrez.read(handle)
@@ -509,7 +562,9 @@ def map_genomic_to_assembly_elink(
             return rec
 
         try:
-            rec = _retry_ncbi_call(_search, f"esearch(nuccore) {acc}", max_retries, retry_wait)
+            rec = _retry_ncbi_call(
+                _search, f"esearch(nuccore) {acc}", max_retries, retry_wait
+            )
         except RuntimeError as exc:
             log.warning(str(exc))
             continue
@@ -560,7 +615,9 @@ def map_genomic_to_assembly_elink(
         time.sleep(_RATE_LIMIT_DELAY)
 
     # ── Phase 3: batch esummary(assembly) → GCF_ accession ────────────────
-    all_asm_uids = list({uid for uids in nuccore_uid_to_asm_uids.values() for uid in uids})
+    all_asm_uids = list(
+        {uid for uids in nuccore_uid_to_asm_uids.values() for uid in uids}
+    )
     asm_uid_to_gcf: dict[str, str] = {}
 
     for i in range(0, len(all_asm_uids), _BATCH_SIZE):
@@ -600,7 +657,9 @@ def map_genomic_to_assembly_elink(
                 log.debug(f"  {acc} → {gcf}")
                 break
         if result[acc] is None and asm_uids:
-            log.debug(f"  {acc}: assembly UID(s) {asm_uids} had no GCF_ accession in summary")
+            log.debug(
+                f"  {acc}: assembly UID(s) {asm_uids} had no GCF_ accession in summary"
+            )
 
     mapped = sum(1 for v in result.values() if v is not None)
     log.info(f"map_genomic_to_assembly_elink: {mapped}/{len(accessions)} mapped")
@@ -610,20 +669,20 @@ def map_genomic_to_assembly_elink(
 # ── UCSC→GCF mapping (shared by merge_resolved for noncode_v4/2016) ──────────
 
 EXTENDED_UCSC_TO_GCF: dict[str, str] = {
-    "TAIR10":   "GCF_000001735.4",   # Arabidopsis thaliana
-    "CE10":     "GCF_000002985.6",   # Caenorhabditis elegans (WBcel235)
-    "DM6":      "GCF_000001215.4",   # Drosophila melanogaster
-    "RN6":      "GCF_000001895.5",   # Rattus norvegicus
-    "MONDOM5":  "GCF_000002295.2",   # Monodelphis domesticus
-    "PONABE2":  "GCF_000001545.5",   # Pongo abelii
-    "GALGAL4":  "GCF_000002315.6",   # Gallus gallus (GRCg6a)
-    "ORNANA1":  "GCF_000002275.2",   # Ornithorhynchus anatinus
-    "BOSTAU6":  "GCF_000003055.6",   # Bos taurus (UMD 3.1.1)
-    "DANRER10": "GCF_000002035.6",   # Danio rerio (GRCz11)
+    "TAIR10": "GCF_000001735.4",  # Arabidopsis thaliana
+    "CE10": "GCF_000002985.6",  # Caenorhabditis elegans (WBcel235)
+    "DM6": "GCF_000001215.4",  # Drosophila melanogaster
+    "RN6": "GCF_000001895.5",  # Rattus norvegicus
+    "MONDOM5": "GCF_000002295.2",  # Monodelphis domesticus
+    "PONABE2": "GCF_000001545.5",  # Pongo abelii
+    "GALGAL4": "GCF_000002315.6",  # Gallus gallus (GRCg6a)
+    "ORNANA1": "GCF_000002275.2",  # Ornithorhynchus anatinus
+    "BOSTAU6": "GCF_000003055.6",  # Bos taurus (UMD 3.1.1)
+    "DANRER10": "GCF_000002035.6",  # Danio rerio (GRCz11)
     # noncode_v4 extras not in the original noncode UCSC map
-    "DANRER7":  "GCF_000002035.5",   # Danio rerio (GRCz10)
-    "DM3":      "GCF_000001215.3",   # Drosophila melanogaster (BDGP5)
-    "GALGAL3":  "GCF_000002315.5",   # Gallus gallus (Gallus_gallus-2.1)
+    "DANRER7": "GCF_000002035.5",  # Danio rerio (GRCz10)
+    "DM3": "GCF_000001215.3",  # Drosophila melanogaster (BDGP5)
+    "GALGAL3": "GCF_000002315.5",  # Gallus gallus (Gallus_gallus-2.1)
 }
 
 
@@ -633,7 +692,8 @@ def apply_ucsc_to_gcf_mapping(df: pd.DataFrame) -> pd.DataFrame:
         return df
     result = df.copy()
     result["assembly_accession"] = result["assembly_accession"].apply(
-        lambda v: EXTENDED_UCSC_TO_GCF.get(str(v).strip().upper(), v)
-        if pd.notna(v) else v
+        lambda v: (
+            EXTENDED_UCSC_TO_GCF.get(str(v).strip().upper(), v) if pd.notna(v) else v
+        )
     )
     return result

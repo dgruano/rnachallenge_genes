@@ -90,10 +90,10 @@ from logging_utils import get_logger
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("map_ids_to_tools", snakemake.log[0])
 challenge_fasta = snakemake.input.challenge_fasta
-manifest_json   = snakemake.input.manifest
-out_map         = snakemake.output.tool_map
-out_stats       = snakemake.output.tool_stats
-out_unmatched   = snakemake.output.unmatched
+manifest_json = snakemake.input.manifest
+out_map = snakemake.output.tool_map
+out_stats = snakemake.output.tool_stats
+out_unmatched = snakemake.output.unmatched
 
 # ── Accession patterns ────────────────────────────────────────
 # GI-style (underscore or pipe separators)
@@ -105,35 +105,37 @@ _GI_RE = re.compile(
 # All known accession patterns to scan for in full headers (Pass 3)
 _ACCESSION_PATTERNS = [
     # RefSeq transcript / gene / predicted
-    re.compile(r'\b((?:NM|NR|XM|XR|NP|XP|NG|NC|NT|NW|NZ)_\d+(?:\.\d+)?)\b', re.IGNORECASE),
+    re.compile(
+        r"\b((?:NM|NR|XM|XR|NP|XP|NG|NC|NT|NW|NZ)_\d+(?:\.\d+)?)\b", re.IGNORECASE
+    ),
     # Ensembl transcript IDs (any species)
-    re.compile(r'\b(ENS[A-Z]*T\d{11}(?:\.\d+)?)\b', re.IGNORECASE),
+    re.compile(r"\b(ENS[A-Z]*T\d{11}(?:\.\d+)?)\b", re.IGNORECASE),
     # Ensembl gene IDs (any species)
-    re.compile(r'\b(ENS[A-Z]*G\d{11}(?:\.\d+)?)\b', re.IGNORECASE),
+    re.compile(r"\b(ENS[A-Z]*G\d{11}(?:\.\d+)?)\b", re.IGNORECASE),
     # UCSC
-    re.compile(r'\b(uc\d{3}[a-z]{3}\.\d+)\b', re.IGNORECASE),
+    re.compile(r"\b(uc\d{3}[a-z]{3}\.\d+)\b", re.IGNORECASE),
     # NONCODE v5 transcript / gene
-    re.compile(r'\b(NON[A-Z]{3}[TG]\d+\.\d+)\b'),
+    re.compile(r"\b(NON[A-Z]{3}[TG]\d+\.\d+)\b"),
     # Arabidopsis TAIR
-    re.compile(r'\b(AT[0-9CM]G\d{5}(?:\.\d+)?)\b', re.IGNORECASE),
+    re.compile(r"\b(AT[0-9CM]G\d{5}(?:\.\d+)?)\b", re.IGNORECASE),
     # Oryza sativa (RAP-DB)
-    re.compile(r'\b(Os\d{2}g\d{7})\b', re.IGNORECASE),
+    re.compile(r"\b(Os\d{2}g\d{7})\b", re.IGNORECASE),
     # Oryza sativa (MSU/TIGR)
-    re.compile(r'\b(LOC_Os\d{2}g\d{5})\b', re.IGNORECASE),
+    re.compile(r"\b(LOC_Os\d{2}g\d{5})\b", re.IGNORECASE),
     # Glycine max (Phytozome)
-    re.compile(r'\b(Glyma\.\d{2}G\d{6}(?:\.\d+)?)\b', re.IGNORECASE),
+    re.compile(r"\b(Glyma\.\d{2}G\d{6}(?:\.\d+)?)\b", re.IGNORECASE),
     # Zea mays (MaizeGDB)
-    re.compile(r'\b(Zm\d{5}g\d{6})\b', re.IGNORECASE),
+    re.compile(r"\b(Zm\d{5}g\d{6})\b", re.IGNORECASE),
     # Zea mays (legacy GRMZM)
-    re.compile(r'\b(GRMZM\w+)\b', re.IGNORECASE),
+    re.compile(r"\b(GRMZM\w+)\b", re.IGNORECASE),
     # Solanum lycopersicum (SGN)
-    re.compile(r'\b(Solyc\d{2}g\d{6}\.\d+\.\d+)\b', re.IGNORECASE),
+    re.compile(r"\b(Solyc\d{2}g\d{6}\.\d+\.\d+)\b", re.IGNORECASE),
     # WormBase gene
-    re.compile(r'\b(WBGene\d{8})\b', re.IGNORECASE),
+    re.compile(r"\b(WBGene\d{8})\b", re.IGNORECASE),
     # FlyBase transcript
-    re.compile(r'\b(FBtr\d{7})\b', re.IGNORECASE),
+    re.compile(r"\b(FBtr\d{7})\b", re.IGNORECASE),
     # SGD yeast
-    re.compile(r'\b(Y[A-P][LR]\d{3}[WC](?:_[A-Z])?)\b', re.IGNORECASE),
+    re.compile(r"\b(Y[A-P][LR]\d{3}[WC](?:_[A-Z])?)\b", re.IGNORECASE),
 ]
 
 _FASTA_SUFFIXES = {
@@ -149,6 +151,7 @@ _FASTA_SUFFIXES = {
 
 
 # ── ID helpers ────────────────────────────────────────────────
+
 
 def normalise_id(raw_id: str) -> str:
     """
@@ -271,7 +274,7 @@ def _parse_handle(
     gi_accessions: set[str] = set()
     accession_exact: set[str] = set()
     accession_versionless: set[str] = set()
-    id_set:        set[str] = set()
+    id_set: set[str] = set()
     hash_map: dict[str, str] = {}
     hash_ut_map: dict[str, str] = {}
 
@@ -327,14 +330,14 @@ def parse_fasta_full(
     Supports plain, gzip-compressed, TAR/TAR.GZ/TGZ, and ZIP archives.
     """
     n_sequences = 0
-    raw_headers: set[str]          = set()
-    ws_headers: set[str]           = set()
-    gi_accessions: set[str]        = set()
-    accession_exact: set[str]      = set()
+    raw_headers: set[str] = set()
+    ws_headers: set[str] = set()
+    gi_accessions: set[str] = set()
+    accession_exact: set[str] = set()
     accession_versionless: set[str] = set()
-    id_set:        set[str]        = set()
-    hash_map:      dict[str, str]  = {}
-    hash_ut_map:   dict[str, str]  = {}
+    id_set: set[str] = set()
+    hash_map: dict[str, str] = {}
+    hash_ut_map: dict[str, str] = {}
     name = str(fasta_path)
     try:
         if name.endswith((".tar", ".tar.gz", ".tgz")):
@@ -439,8 +442,8 @@ tool_gi_sets: dict[str, set[str]] = {}
 tool_accession_exact_sets: dict[str, set[str]] = {}
 tool_accession_versionless_sets: dict[str, set[str]] = {}
 tool_sequence_counts: dict[str, int] = {}
-tool_id_sets:   dict[str, set[str]]        = {}
-tool_hash_maps: dict[str, dict[str, str]]  = {}
+tool_id_sets: dict[str, set[str]] = {}
+tool_hash_maps: dict[str, dict[str, str]] = {}
 tool_hash_ut_maps: dict[str, dict[str, str]] = {}
 
 for tool, files in sorted(tool_files.items()):
@@ -450,7 +453,7 @@ for tool, files in sorted(tool_files.items()):
     all_acc_exact: set[str] = set()
     all_acc_versionless: set[str] = set()
     n_sequences = 0
-    all_ids:   set[str]        = set()
+    all_ids: set[str] = set()
     all_hashes: dict[str, str] = {}
     all_hashes_ut: dict[str, str] = {}
     for fp in files:
@@ -483,7 +486,7 @@ for tool, files in sorted(tool_files.items()):
     tool_accession_exact_sets[tool] = all_acc_exact
     tool_accession_versionless_sets[tool] = all_acc_versionless
     tool_sequence_counts[tool] = n_sequences
-    tool_id_sets[tool]   = all_ids
+    tool_id_sets[tool] = all_ids
     tool_hash_maps[tool] = all_hashes
     tool_hash_ut_maps[tool] = all_hashes_ut
     log.info(
@@ -499,18 +502,20 @@ challenge_records: list[dict] = []
 with open(challenge_fasta) as fh:
     for record in SeqIO.parse(fh, "fasta"):
         acc_exact = _extract_accessions_from_text(record.description)
-        challenge_records.append({
-            "transcript_id": normalise_id(record.id),
-            "raw_header":    record.description,
-            "raw_header_ws": _canonicalize_header_ws(record.description),
-            "gi_ids":        _extract_gi_accessions(record.description),
-            "acc_exact":     acc_exact,
-            "acc_base":      {_version_strip(a) for a in acc_exact},
-            "seq_hash":      _seq_hash(str(record.seq)),
-            "seq_hash_ut":   _seq_hash_ut(str(record.seq)),
-            # All IDs that could represent this transcript (for multi-token / regex passes)
-            "all_ids":       _all_ids_from_header(record.description),
-        })
+        challenge_records.append(
+            {
+                "transcript_id": normalise_id(record.id),
+                "raw_header": record.description,
+                "raw_header_ws": _canonicalize_header_ws(record.description),
+                "gi_ids": _extract_gi_accessions(record.description),
+                "acc_exact": acc_exact,
+                "acc_base": {_version_strip(a) for a in acc_exact},
+                "seq_hash": _seq_hash(str(record.seq)),
+                "seq_hash_ut": _seq_hash_ut(str(record.seq)),
+                # All IDs that could represent this transcript (for multi-token / regex passes)
+                "all_ids": _all_ids_from_header(record.description),
+            }
+        )
 
 log.info(f"  {len(challenge_records):,} sequences in RNAChallenge.fa")
 
@@ -533,19 +538,19 @@ tool_strategy_counts: dict[str, dict[str, int]] = {
 }
 
 for rec in challenge_records:
-    tid      = rec["transcript_id"]
-    raw_hdr  = rec["raw_header"]
+    tid = rec["transcript_id"]
+    raw_hdr = rec["raw_header"]
     raw_hdr_ws = rec["raw_header_ws"]
     gi_ids = rec["gi_ids"]
     acc_exact = rec["acc_exact"]
     acc_base = rec["acc_base"]
-    all_ids  = rec["all_ids"]
+    all_ids = rec["all_ids"]
     seq_hash = rec["seq_hash"]
     seq_hash_ut = rec["seq_hash_ut"]
 
-    matched_tools:     list[str] = []
+    matched_tools: list[str] = []
     matched_strategies: list[str] = []
-    matched_tokens:    dict[str, str] = {}  # tool -> comma-separated matching tokens
+    matched_tokens: dict[str, str] = {}  # tool -> comma-separated matching tokens
 
     for tool in sorted(tool_id_sets.keys()):
         header_set = tool_header_sets[tool]
@@ -553,7 +558,7 @@ for rec in challenge_records:
         gi_set = tool_gi_sets[tool]
         acc_exact_set = tool_accession_exact_sets[tool]
         acc_base_set = tool_accession_versionless_sets[tool]
-        id_set   = tool_id_sets[tool]
+        id_set = tool_id_sets[tool]
         hash_map = tool_hash_maps[tool]
         hash_ut_map = tool_hash_ut_maps[tool]
 
@@ -578,7 +583,9 @@ for rec in challenge_records:
         # Pass 1d — version-aware recognised accession matching
         if strategy is None and (acc_exact & acc_exact_set or acc_base & acc_base_set):
             strategy = "version_aware"
-            match_tokens = sorted((acc_exact & acc_exact_set) | (acc_base & acc_base_set))
+            match_tokens = sorted(
+                (acc_exact & acc_exact_set) | (acc_base & acc_base_set)
+            )
 
         # Pass 2 — multi-token: any of the IDs extracted from the
         # RNAChallenge header appear in the tool's expanded ID set
@@ -607,26 +614,42 @@ for rec in challenge_records:
             matched_tokens[tool] = ";".join(match_tokens)
             tool_strategy_counts[tool][strategy] += 1
 
-    rows.append({
-        "transcript_id":   tid,
-        "raw_header":      rec["raw_header"],
-        "tools":           ",".join(matched_tools),
-        "n_tools":         len(matched_tools),
-        "primary_tool":    matched_tools[0] if matched_tools else "",
-        "match_strategy":  ",".join(dict.fromkeys(matched_strategies)),  # unique, ordered
-        "matching_tokens": "|".join(f"{t}:{matched_tokens[t]}" for t in matched_tools),
-    })
+    rows.append(
+        {
+            "transcript_id": tid,
+            "raw_header": rec["raw_header"],
+            "tools": ",".join(matched_tools),
+            "n_tools": len(matched_tools),
+            "primary_tool": matched_tools[0] if matched_tools else "",
+            "match_strategy": ",".join(
+                dict.fromkeys(matched_strategies)
+            ),  # unique, ordered
+            "matching_tokens": "|".join(
+                f"{t}:{matched_tokens[t]}" for t in matched_tools
+            ),
+        }
+    )
 
-df_map = pd.DataFrame(rows, columns=[
-    "transcript_id", "raw_header", "tools", "n_tools",
-    "primary_tool", "match_strategy", "matching_tokens",
-])
+df_map = pd.DataFrame(
+    rows,
+    columns=[
+        "transcript_id",
+        "raw_header",
+        "tools",
+        "n_tools",
+        "primary_tool",
+        "match_strategy",
+        "matching_tokens",
+    ],
+)
 
 # ── Write outputs ─────────────────────────────────────────────
 df_map.to_csv(out_map, sep="\t", index=False)
 log.info(f"Tool source map written → {out_map}")
 
-df_unmatched = df_map.loc[df_map["n_tools"] == 0, ["transcript_id", "raw_header"]].copy()
+df_unmatched = df_map.loc[
+    df_map["n_tools"] == 0, ["transcript_id", "raw_header"]
+].copy()
 df_unmatched.to_csv(out_unmatched, sep="\t", index=False)
 log.info(f"Unmatched IDs written  → {out_unmatched} ({len(df_unmatched):,} records)")
 
@@ -635,30 +658,32 @@ all_tools_in_manifest = {e["tool"] for e in manifest}
 stats_rows = []
 
 for tool in sorted(all_tools_in_manifest):
-    sc      = tool_strategy_counts.get(tool, {})
+    sc = tool_strategy_counts.get(tool, {})
     n_total = sum(sc.values())
     n_sequences = tool_sequence_counts.get(tool, 0)
     n_ids = len(tool_id_sets.get(tool, set()))
     n_hashes = len(tool_hash_maps.get(tool, {}))
     n_hashes_ut = len(tool_hash_ut_maps.get(tool, {}))
-    pct     = 100.0 * n_total / len(challenge_records) if challenge_records else 0.0
-    stats_rows.append({
-        "tool":                   tool,
-        "n_matched":              n_total,
-        "n_sequences_loaded":      n_sequences,
-        "n_possible_ids_loaded":   n_ids,
-        "n_hashes_loaded":         n_hashes,
-        "n_hashes_ut_loaded":      n_hashes_ut,
-        "pct_challenge_matched":  round(pct, 2),
-        "n_exact_id":             sc.get("exact_id",    0),
-        "n_exact_header_ws":      sc.get("exact_header_ws", 0),
-        "n_gi_canonical":         sc.get("gi_canonical", 0),
-        "n_version_aware":        sc.get("version_aware", 0),
-        "n_multi_token":          sc.get("multi_token", 0),
-        "n_regex_scan":           sc.get("regex_scan", 0),
-        "n_seq_hash":             sc.get("seq_hash",    0),
-        "n_seq_hash_ut":          sc.get("seq_hash_ut", 0),
-    })
+    pct = 100.0 * n_total / len(challenge_records) if challenge_records else 0.0
+    stats_rows.append(
+        {
+            "tool": tool,
+            "n_matched": n_total,
+            "n_sequences_loaded": n_sequences,
+            "n_possible_ids_loaded": n_ids,
+            "n_hashes_loaded": n_hashes,
+            "n_hashes_ut_loaded": n_hashes_ut,
+            "pct_challenge_matched": round(pct, 2),
+            "n_exact_id": sc.get("exact_id", 0),
+            "n_exact_header_ws": sc.get("exact_header_ws", 0),
+            "n_gi_canonical": sc.get("gi_canonical", 0),
+            "n_version_aware": sc.get("version_aware", 0),
+            "n_multi_token": sc.get("multi_token", 0),
+            "n_regex_scan": sc.get("regex_scan", 0),
+            "n_seq_hash": sc.get("seq_hash", 0),
+            "n_seq_hash_ut": sc.get("seq_hash_ut", 0),
+        }
+    )
 
 df_stats = pd.DataFrame(stats_rows)
 df_stats.to_csv(out_stats, sep="\t", index=False)
@@ -667,13 +692,15 @@ log.info(f"Per-tool stats written → {out_stats}")
 # ── Strategy summary ──────────────────────────────────────────
 strat_counts = df_map["match_strategy"].value_counts()
 
-n_matched_any   = (df_map["n_tools"] > 0).sum()
+n_matched_any = (df_map["n_tools"] > 0).sum()
 n_matched_multi = (df_map["n_tools"] > 1).sum()
-n_unmatched     = (df_map["n_tools"] == 0).sum()
+n_unmatched = (df_map["n_tools"] == 0).sum()
 
 log.info("=" * 60)
 log.info(f"RNAChallenge sequences         : {len(df_map):,}")
-log.info(f"  Matched to ≥1 tool           : {n_matched_any:,} ({100*n_matched_any/len(df_map):.1f}%)")
+log.info(
+    f"  Matched to ≥1 tool           : {n_matched_any:,} ({100*n_matched_any/len(df_map):.1f}%)"
+)
 log.info(f"  Matched to >1 tool           : {n_matched_multi:,}")
 log.info(f"  Unmatched (no tool found)    : {n_unmatched:,}")
 log.info("")
@@ -690,8 +717,10 @@ for strat in (
     n = (df_map["match_strategy"].str.contains(strat, na=False)).sum()
     log.info(f"  {strat:<15} : {n:,}")
 log.info("")
-log.info(f"{'Tool':<15} {'Seqs':>10} {'IDs':>12} {'Hashes':>10} {'Matched':>9} {'%Chall':>7}  "
-         f"{'exact':>6} {'ex_ws':>6} {'gi':>6} {'ver':>6} {'multi':>6} {'hash':>6} {'h_ut':>6}")
+log.info(
+    f"{'Tool':<15} {'Seqs':>10} {'IDs':>12} {'Hashes':>10} {'Matched':>9} {'%Chall':>7}  "
+    f"{'exact':>6} {'ex_ws':>6} {'gi':>6} {'ver':>6} {'multi':>6} {'hash':>6} {'h_ut':>6}"
+)
 log.info("-" * 94)
 for row in stats_rows:
     log.info(

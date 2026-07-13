@@ -326,6 +326,13 @@ DB_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
     (
         "plant",
         "vitis_vinifera",
+        "phytozome",
+        "Genoscope.12X",
+        re.compile(r"^GTVIVG[0-9]+$", re.IGNORECASE),
+    ),
+    (
+        "plant",
+        "vitis_vinifera",
         "ensembl_plants",
         "",
         re.compile(r"^VIT_\d+s\d+$", re.IGNORECASE),
@@ -334,7 +341,7 @@ DB_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
         "plant",
         "solanum_tuberosum",
         "pgsc",
-        "PGSC_DM_v4.03",
+        "PGSC_DM_v3.4",
         re.compile(r"^PGSC\d+DM\w+", re.IGNORECASE),
     ),
     (
@@ -476,6 +483,13 @@ EMBEDDED_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
     ),
     (
         "plant",
+        "vitis_vinifera",
+        "phytozome",
+        "Genoscope.12X",
+        re.compile(r"(GTVIVG[0-9]+)", re.IGNORECASE),
+    ),
+    (
+        "plant",
         "solanum_tuberosum",
         "phytozome",
         "",
@@ -485,7 +499,7 @@ EMBEDDED_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
         "plant",
         "solanum_tuberosum",
         "pgsc",
-        "PGSC_DM_v4.03",
+        "PGSC_DM_v3.4",
         re.compile(r"(PGSC\d+DM\w+)", re.IGNORECASE),
     ),
     (
@@ -586,7 +600,9 @@ for fasta_path in fastas:
         if db_source == "unknown":
             embedded = find_embedded_accession(raw_header)
             if embedded:
-                transcript_id, db_source, species_hint, source_hint, assembly_hint = embedded
+                transcript_id, db_source, species_hint, source_hint, assembly_hint = (
+                    embedded
+                )
                 log.debug(
                     f"  Fallback extraction: {transcript_id!r} → {db_source} "
                     f"(from header: {raw_header!r})"
@@ -602,9 +618,7 @@ for fasta_path in fastas:
             log.debug(
                 f"  Unknown ID format: {transcript_id!r} (header: {raw_header!r})"
             )
-            unknown_rows.append(
-                {**row, "reason": "pattern_unmatched"}
-            )
+            unknown_rows.append({**row, "reason": "pattern_unmatched"})
         else:
             log.debug(f"  Classified {transcript_id!r} → {db_source}")
             classified_rows.append(

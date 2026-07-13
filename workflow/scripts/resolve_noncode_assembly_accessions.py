@@ -29,7 +29,7 @@ from logging_utils import get_logger
 
 # ── Snakemake interface ──────────────────────────────────────────────────────
 # Only initialize snakemake variables when running under Snakemake
-if 'snakemake' in globals():
+if "snakemake" in globals():
     log = get_logger("resolve_noncode_assembly_accessions", snakemake.log[0])
     input_resolved = snakemake.input.resolved
     out_resolved = snakemake.output.resolved
@@ -40,16 +40,16 @@ if 'snakemake' in globals():
 # Based on the 10 species present in NONCODE dataset
 # Verified against NCBI Assembly database: https://www.ncbi.nlm.nih.gov/assembly/
 UCSC_TO_GCF_MAPPING = {
-    "TAIR10": "GCF_000001735.4",     # Arabidopsis thaliana (TAIR10.1)
-    "CE10": "GCF_000002985.6",       # Caenorhabditis elegans (WBcel235)
-    "DM6": "GCF_000001215.4",        # Drosophila melanogaster (Release 6 plus ISO1 MT)
-    "RN6": "GCF_000001895.5",        # Rattus norvegicus (Rnor_6.0)
-    "MONDOM5": "GCF_000002295.2",    # Monodelphis domesticus (MonDom5)
-    "PONABE2": "GCF_000001545.5",    # Pongo abelii (P_pygmaeus_2.0.2)
-    "GALGAL4": "GCF_000002315.6",    # Gallus gallus (GRCg6a)
-    "ORNANA1": "GCF_000002275.2",    # Ornithorhynchus anatinus (ASM227v2)
-    "BOSTAU6": "GCF_000003055.6",    # Bos taurus (Bos_taurus_UMD_3.1.1)
-    "DANRER10": "GCF_000002035.6",   # Danio rerio (GRCz11)
+    "TAIR10": "GCF_000001735.4",  # Arabidopsis thaliana (TAIR10.1)
+    "CE10": "GCF_000002985.6",  # Caenorhabditis elegans (WBcel235)
+    "DM6": "GCF_000001215.4",  # Drosophila melanogaster (Release 6 plus ISO1 MT)
+    "RN6": "GCF_000001895.5",  # Rattus norvegicus (Rnor_6.0)
+    "MONDOM5": "GCF_000002295.2",  # Monodelphis domesticus (MonDom5)
+    "PONABE2": "GCF_000001545.5",  # Pongo abelii (P_pygmaeus_2.0.2)
+    "GALGAL4": "GCF_000002315.6",  # Gallus gallus (GRCg6a)
+    "ORNANA1": "GCF_000002275.2",  # Ornithorhynchus anatinus (ASM227v2)
+    "BOSTAU6": "GCF_000003055.6",  # Bos taurus (Bos_taurus_UMD_3.1.1)
+    "DANRER10": "GCF_000002035.6",  # Danio rerio (GRCz11)
 }
 
 RESOLVED_COLS = [
@@ -83,7 +83,9 @@ def _validate_ucsc_mapping():
     accessions = list(UCSC_TO_GCF_MAPPING.values())
     if len(accessions) != len(set(accessions)):
         duplicates = [acc for acc in accessions if accessions.count(acc) > 1]
-        raise ValueError(f"Duplicate GCF accessions found in UCSC_TO_GCF_MAPPING: {set(duplicates)}")
+        raise ValueError(
+            f"Duplicate GCF accessions found in UCSC_TO_GCF_MAPPING: {set(duplicates)}"
+        )
 
 
 # Validate mapping at module load time
@@ -165,16 +167,20 @@ def filter_and_resolve_noncode(
         mapped = map_ucsc_to_gcf(str(assembly_val))
         if mapped:
             row_dict = row.to_dict()
-            row_dict["assembly_name"] = str(assembly_val)   # UCSC name as human-readable ID
+            row_dict["assembly_name"] = str(
+                assembly_val
+            )  # UCSC name as human-readable ID
             row_dict["assembly_accession"] = mapped
             resolved_rows.append(row_dict)
         else:
             # Could not map - goes to unresolved
-            unresolved_rows.append({
-                "transcript_id": row.get("transcript_id"),
-                "db_source": row.get("db_source", "noncode"),
-                "reason": f"ucsc_mapping_failed:{assembly_val}",
-            })
+            unresolved_rows.append(
+                {
+                    "transcript_id": row.get("transcript_id"),
+                    "db_source": row.get("db_source", "noncode"),
+                    "reason": f"ucsc_mapping_failed:{assembly_val}",
+                }
+            )
 
     resolved = pd.DataFrame(resolved_rows) if resolved_rows else pd.DataFrame()
     unresolved = pd.DataFrame(unresolved_rows) if unresolved_rows else pd.DataFrame()
@@ -184,7 +190,7 @@ def filter_and_resolve_noncode(
 
 # ── Main processing ────────────────────────────────────────────────────────
 # Only run when executed by Snakemake
-if 'snakemake' in globals():
+if "snakemake" in globals():
     log.info("Stage 3: Resolving NONCODE assembly accessions")
 
     try:
@@ -215,7 +221,9 @@ if 'snakemake' in globals():
     # Log statistics
     ucsc_mask = df["assembly_accession"].apply(is_ucsc_assembly_accession)
     needs_mapping = df[ucsc_mask]
-    log.info(f"Found {len(needs_mapping)} row(s) with UCSC assembly names needing mapping")
+    log.info(
+        f"Found {len(needs_mapping)} row(s) with UCSC assembly names needing mapping"
+    )
 
     # Write outputs
     log.info(f"Writing {len(resolved)} resolved row(s) to {out_resolved}")
@@ -225,16 +233,22 @@ if 'snakemake' in globals():
             cols_to_write = [c for c in RESOLVED_COLS if c in resolved.columns]
             # If there are extra columns, keep them at the end
             extra_cols = [c for c in resolved.columns if c not in RESOLVED_COLS]
-            resolved[cols_to_write + extra_cols].to_csv(out_resolved, sep="\t", index=False)
+            resolved[cols_to_write + extra_cols].to_csv(
+                out_resolved, sep="\t", index=False
+            )
         else:
-            pd.DataFrame(columns=RESOLVED_COLS).to_csv(out_resolved, sep="\t", index=False)
+            pd.DataFrame(columns=RESOLVED_COLS).to_csv(
+                out_resolved, sep="\t", index=False
+            )
     except IOError as e:
         log.error(f"Failed to write resolved output to {out_resolved}: {e}")
         raise
 
     try:
         if len(unresolved) > 0:
-            log.warning(f"Writing {len(unresolved)} unresolved row(s) to {out_unresolved}")
+            log.warning(
+                f"Writing {len(unresolved)} unresolved row(s) to {out_unresolved}"
+            )
             unresolved.to_csv(out_unresolved, sep="\t", index=False)
         else:
             log.info("No unresolved rows")

@@ -32,7 +32,13 @@ out_fasta = Path(snakemake.output.fasta)
 out_bed = Path(snakemake.output.bed)
 out_failed = Path(snakemake.output.failed)
 
-FAILED_COLUMNS = ["transcript_id", "assembly_accession", "chrom", "db_source", "fail_reason"]
+FAILED_COLUMNS = [
+    "transcript_id",
+    "assembly_accession",
+    "chrom",
+    "db_source",
+    "fail_reason",
+]
 
 # ── FASTA: binary concatenation ──────────────────────────────
 log.info(f"Concatenating {len(fastas)} FASTA files → {out_fasta}")
