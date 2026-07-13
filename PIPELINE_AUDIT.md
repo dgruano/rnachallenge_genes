@@ -292,9 +292,10 @@ Current `matched_not_found` breakdown (from `results/matched_not_found.tsv`):
 | `matched_noncode2016_no_coordinates` | 674 | NONCODE normalized/fuzzy match + species fallback (#4) | M / 70-90% for the good-coverage subset |
 | `phytozome_gff_no_match_zea_mays` | 644 | Legacy maize (Zm00001d vs B73 v5) crosswalk (#2) | M-H / high |
 | `not_found_in_any_noncode` | 210 | NONCODE base-ID normalization (#4) | M / 40-90% |
-| `assembly_mapping_failed:NC_008405.2` / `NC_008394.4` | 15 | Explicit NC→GCF exception map (#5) | **L / ~100%** |
+| `assembly_mapping_failed:NC_008405.2` / `NC_008394.4` | 15 | ✅ **DONE** — static NC→GCF exception map (#5): rice Build 4.0 = `GCF_000005425.2` | **L / ~100%** |
 | `worm_gtf_not_resolved` | 5 | Multi-release worm fallback (#7) | L-M / 60-80% |
-| `sgd_gtf_not_resolved` / `phytozome_gff_no_match_citrus_sinensis` | 2 | `Source:*;Acc:*` parser canonicalization (#6) | L / ~100% |
+| `sgd_gtf_not_resolved` | 1 | ✅ **DONE** — `Source:SGD;Acc:*` canonicalization + `dbxref` index key (#6) | L / ~100% |
+| `phytozome_gff_no_match_citrus_sinensis` | 1 | ID-version mismatch (not a parser gap) — needs crosswalk, out of #6 scope | — |
 
 **Highest ROI = Strategy #1 (Source Attribution Backbone), cross-cutting.** Persist transcript provenance (source tool/paper/DB/release) from Stage 0 through merge. Immediate payoff with *current* data — no new resolver logic: 38.5% of `matched_not_found` rows already carry a tool tag (`not_found_in_gramene` 767, `missing_coordinates` 697, phytozome zea 563, phytozome oryza 258). It routes every large bucket below with one architectural change.
 
@@ -392,6 +393,12 @@ awk -F'\t' 'FNR>1{print $NF}' results/sequences/*.failed.tsv | sort | uniq -c
 ### Priority 0: Land the phytozome/JGI unblock (NEW 2026-07-12)
 - JGI auth is now implemented + 5 new species wired. **Re-run parse → phytozome resolution → merge** to grow the resolved set with the new species (vitis/potato/amborella/chlamydomonas/physcomitrella). See [Phytozome/JGI unblock](#phytozomejgi-unblock-2026-07-12).
 - To also *extract* phytozome coordinates, add genome-FASTA entries to the manifest (same token) — otherwise the new rows resolve but stay `assembly_not_cached`.
+
+**⚠️ Unblock to run *now* while JGI restores are pending (2026-07-12):** `resolve_phytozome_gtf` needs **all** configured GFF3s present and sits **upstream of merge→extract→report**, so any single missing phytozome file blocks the whole pipeline (not just the phytozome stream). Two problems found + fixed so a full run can proceed today:
+1. **Config path mismatch (fixed).** `citrus/sorghum/ricinus/oryza` pointed at `*.gene_exons.gff3.gz` filenames not on disk (disk has `*.gene.gff3.gz`). Because the `download_phytozome_gtf` script keys by *species name* while the resolve rule requests files by their `gtf:` *basename*, the mismatched paths triggered JGI downloads that fail with "manifest entry not found". Repointed the 4 `gtf:` paths to the existing `.gene.gff3.gz` files (verified they carry `mRNA` features the resolver reads). `touch`ed them so they postdate `manifest.json` (else mtime forces the same failing rebuild).
+2. **JGI-only species deferred.** `solanum_tuberosum` (no local file), `vitis_vinifera` + `physcomitrella_patens` (**PURGED**, restore reqs pending, ≤24h) are commented out in `config/phytozome_gtf_sources.yaml` with dated re-enable notes. amborella + chlamydomonas are RESTORED and already downloaded, so they stay in.
+
+Result: dry-run drops from 37 → 29 jobs with **0 phytozome download jobs** and no missing inputs. Run `snakemake --profile profiles/default --rerun-triggers=mtime`. When JGI restores vitis/physcomitrella (poll `files.jgi.doe.gov/request_archived_files/requests/652368`), uncomment them (and add solanum_tuberosum's GFF3), then rerun `resolve_phytozome_gtf` + downstream.
 
 ### Priority 1: Residual non-NCBI URL gaps (post-#10)
 - `assembly_not_cached` residual is 314: phytozome 203 (extraction still needs genome FASTA — see Priority 0), ensembl 53, flybase 33, noncode(+v4) 25.
