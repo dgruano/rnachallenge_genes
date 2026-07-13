@@ -256,13 +256,20 @@ def _download_github(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
     """
     Enumerate files in a GitHub repo path via the Contents API and download them.
     Recursively handles subdirectories (up to depth 3).
+    Supports either a single `path` or multiple `paths` entries.
     """
     owner = cfg["owner"]
     repo = cfg["repo"]
     branch = cfg.get("branch", "main")
     path = cfg.get("path", "")
+    paths = cfg.get("paths", [])
     extensions = cfg.get("extensions", list(FASTA_EXTENSIONS))
     results = []
+
+    # Backward compatible path handling:
+    # - If `paths` is configured, download from each listed path.
+    # - Otherwise use legacy single `path`.
+    paths_to_process = [p for p in paths if p] if paths else [path]
 
     def _list_and_download(api_path: str, depth: int = 0):
         if depth > 3:
@@ -301,7 +308,8 @@ def _download_github(tool: str, cfg: dict, out_dir: Path) -> list[dict]:
                 else:
                     results.append({"tool": tool, "file": str(dest), "url": dl_url, "status": "failed"})
 
-    _list_and_download(path)
+    for path_item in paths_to_process:
+        _list_and_download(path_item)
     return results
 
 
