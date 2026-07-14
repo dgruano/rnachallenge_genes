@@ -107,6 +107,17 @@ DB_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
         re.compile(r"^AT\dG\d+(?:\.\d+)?$", re.IGNORECASE),
     ),
     (
+        # PreLnc-coding maize: B73 RefGen_v4 (AGPv4) → Ensembl Plants v44.
+        # Header carries it literally: "cdna chromosome:B73_RefGen_v4:...".
+        # Distinct from GRMZM (AGPv3) below — different assembly, verified by
+        # ID presence (0/100 GRMZM cores exist in the AGPv4 annotation).
+        "plant",
+        "zea_mays",
+        "ensembl_plants",
+        "B73_RefGen_v4",
+        re.compile(r"^Zm00001[de]\d+(?:_T\d+)?$", re.IGNORECASE),
+    ),
+    (
         "plant",
         "zea_mays",
         "maizegdb_or_ensembl",
@@ -114,6 +125,8 @@ DB_PATTERNS: list[tuple[str, str, str, str, re.Pattern]] = [
         re.compile(r"^Zm\d+g\d+$", re.IGNORECASE),
     ),
     (
+        # RNAPlonc / PreLnc-noncoding maize: B73 RefGen_v3 (AGPv3) → Phytozome
+        # v11 (GreeNC). NOT in Ensembl Plants v44 — must resolve via phytozome.
         "plant",
         "zea_mays",
         "maizegdb_legacy",

@@ -26,6 +26,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 from logging_utils import get_logger
+from resolution_guard import check_match_rates
 
 # ── Snakemake interface ───────────────────────────────────────
 log = get_logger("resolve_plant_gtf", snakemake.log[0])
@@ -287,3 +288,23 @@ if not res_df.empty:
             f"  {sp}: {len(grp)} transcripts "
             f"[{src.get('assembly_name', '?')} / release {src.get('release', '?')}]"
         )
+
+# ── Presence verification (namespace→assembly correctness guard) ──
+strict = bool(snakemake.config.get("plant_resolution_strict", True))
+min_rate = float(snakemake.config.get("plant_resolution_min_match_rate", 0.02))
+attempted_counts = (
+    df[df["inferred_species"].isin(gtf_indices)]
+    .groupby("inferred_species")
+    .size()
+    .to_dict()
+)
+matched_counts = res_df.groupby("organism").size().to_dict() if not res_df.empty else {}
+failures = check_match_rates(
+    matched_counts, attempted_counts, min_rate=min_rate, log=log
+)
+if failures and strict:
+    log.error(
+        "Strict presence-check failed (plant_gtf); exiting non-zero. "
+        "Set plant_resolution_strict: false in config to override."
+    )
+    sys.exit(1)
