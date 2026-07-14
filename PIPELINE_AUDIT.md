@@ -1,6 +1,6 @@
 # Pipeline Audit — RNA Flanking Sequence Pipeline
 
-_Date: 2026-07-12 · Branch: `main` · HEAD: `bab60c9` (WIP: merge resolved)_
+_Date: 2026-07-14 · Branch: `main` · HEAD: `afa65a7` (phytozome genome-FASTA extraction + assembly-collision inventory)_
 
 > **📌 This document is the source of truth for pipeline health.**
 > Every agent (or person) who investigates or fixes anything **must finish by updating this file** — add findings to the right section (Things That Break / Overcomplicated Patterns / Legitimate Data Issues), tick or renumber the Actionables, and refresh Next Steps. Leave the audit consistent with reality before ending your turn. If a prior conclusion is wrong, mark it superseded rather than deleting the history.
@@ -15,7 +15,20 @@ _Date: 2026-07-12 · Branch: `main` · HEAD: `bab60c9` (WIP: merge resolved)_
 
 **Current extraction:** **13,199 sequences** from 15,544 resolved IDs (~85% extraction rate) after landing bottleneck fix #10 (manifest-driven URL downloads) and rerunning. Up from 12,163.
 
-Remaining failures are now mostly legitimate data gaps. The only sizable unresolved download bucket is **phytozome (203)**, previously deferred due missing genome FASTA URLs/auth constraints — **JGI auth is now implemented (2026-07-12), see [Phytozome/JGI unblock](#phytozomejgi-unblock-2026-07-12).**
+Remaining failures were mostly legitimate data gaps. The only sizable unresolved download bucket was **phytozome (203)**, previously deferred due missing genome FASTA URLs/auth constraints — **JGI auth was implemented (2026-07-12), see [Phytozome/JGI unblock](#phytozomejgi-unblock-2026-07-12); the genome-FASTA extraction gap is now closed in code (2026-07-14), see [Phytozome genome-FASTA extraction](#phytozome-genome-fasta-extraction-2026-07-14).** Counts below predate that landing and need a post-rerun refresh.
+
+---
+
+## Phytozome genome-FASTA extraction (2026-07-14)
+
+✅ **CODE-DONE, RERUN PENDING.** Closes the last open half of the phytozome deferral — the 203 `assembly_not_cached` rows that resolved to coordinates but had no genome to slice against. Landed in `d546a0e` (`feat(phytozome): cache genome FASTAs so resolved rows extract`):
+
+- **Per-species genome cache.** New `download_phytozome_fasta` rule ([download_phytozome_fasta.smk](workflow/rules/download_phytozome_fasta.smk) + [download_phytozome_fasta.py](workflow/scripts/download_phytozome_fasta.py)) fetches each species' JGI genome FASTA to `resources/cache/<assembly_accession>/genome.fasta` — exactly where `extract_sequences` looks. Fan-out is driven by the resolved phytozome species and feeds `.assemblies_ready`.
+- **Collision fix.** The resolver now emits `assembly_accession = phytozome_<species>` instead of a shared literal `Phytozome`, so the 9 phytozome species no longer collapse into one cache dir. Version-matched JGI lookup keeps annotation↔assembly consistent.
+- **Assembly/provenance collisions inventoried.** This work surfaced a set of accession→cache collisions across resolver streams — see [ASSEMBLY_COLLISIONS.md](ASSEMBLY_COLLISIONS.md). Class 1 (shared `Phytozome` key, 503 rows) is fixed by this commit; **Class 2 (~330 recoverable ensembl/flybase/wormbase/ncbi bare-name rows) is the highest-ROI next mapping fix.**
+- **Deploy caveat:** delete any stale `resources/cache/Phytozome/` before the next run so extraction can't read an orphaned wrong genome.
+
+**⏭ Rerun pending:** the fix is in code but not yet reflected in `results/` — the 13,199 / 397 counts and the phytozome-203 bucket throughout this doc are from a pre-`d546a0e` run. Re-run download→extract→report, then refresh the Evidence and Verification counts.
 
 ---
 
@@ -24,9 +37,9 @@ Remaining failures are now mostly legitimate data gaps. The only sizable unresol
 The phytozome deferral had two distinct blockers; the auth one is now closed:
 
 1. **Annotation (GFF3) download — auth. ✅ UNBLOCKED.** `download_phytozome_gtf` ([resolve_phytozome_gtf.smk](workflow/rules/resolve_phytozome_gtf.smk)) now loads a JGI bearer token from `.env` (`JGI_SESSION_TOKEN` or `PHYTOZOME_BEARER`) and fails loudly if absent. Five new species wired into [config/phytozome_gtf_sources.yaml](config/phytozome_gtf_sources.yaml) + [resources/phytozome/manifest.json](resources/phytozome/manifest.json): amborella, chlamydomonas, physcomitrella, **vitis_vinifera** (`VIT_`/`GSVIVT`/`GTVIVG`), **solanum_tuberosum** (`PGSC`). `parse_ids.py` + `PREFIX_TO_SPECIES` route the new prefixes. This expands **transcript→coordinate resolution**, not extraction.
-2. **Genome FASTA for extraction — still open.** The 203 `assembly_not_cached` phytozome rows resolve to coordinates but can't be sliced: the manifest downloads GFF3 annotations, not genome FASTAs. To extract, add genome-FASTA entries (same JGI token mechanism) to the manifest/config, then re-run download+extract. Until then these remain resolved-but-not-extracted.
+2. **Genome FASTA for extraction — ✅ CLOSED (2026-07-14).** The 203 `assembly_not_cached` phytozome rows resolved to coordinates but couldn't be sliced (the manifest downloaded GFF3 annotations, not genome FASTAs). Now fixed by the new `download_phytozome_fasta` rule + per-species cache keys — see [Phytozome genome-FASTA extraction](#phytozome-genome-fasta-extraction-2026-07-14). Rerun pending to reflect in `results/`.
 
-**Net:** the token fix grows the *resolved* set (new plant/algae/moss/grape/potato transcripts get coordinates); closing the extraction gap for phytozome is a separate, now-tractable follow-up (JGI FASTA URLs behind the same auth).
+**Net:** the token fix grows the *resolved* set (new plant/algae/moss/grape/potato transcripts get coordinates); closing the extraction gap for phytozome was a separate follow-up — **now landed (2026-07-14), see [Phytozome genome-FASTA extraction](#phytozome-genome-fasta-extraction-2026-07-14).**
 
 ### Download id + restore fix (2026-07-12, later — makes downloads actually work)
 
@@ -447,7 +460,7 @@ Each concern was investigated in isolation; full findings in `audit/`:
 
     **▶ NEXT STEP:** rerun only the failed sentinels, not the whole download rule. Use [workflow/scripts/list_failed_download_targets.py](workflow/scripts/list_failed_download_targets.py) to turn `results/unresolved_assemblies.tsv` into a newline-delimited list of `resources/cache/<cache_key>/.download_done` targets, then rerun those files with `--rerun-triggers=mtime`. Important: either force the rerun or delete the listed `.download_done` files first, or Snakemake may consider them already satisfied. After that, `cut -f5 results/extraction_failed.tsv | sort | uniq -c` should confirm only the genuine residual gaps remain. The leftover organelle / legacy / sgd cases are genuine data gaps, not bugs — accept them as lost.
 10. ~~**[bottleneck] Make `download_assembly.py` consume `fasta_url`**~~ ✅ **DONE (2026-07-12)** — implemented manifest-driven downloads (`cache_key`,`fasta_url`), URL-slug fan-out, and downloader URL-first behavior with NCBI fallback. Measured impact: **extracted 12,163 → 13,199**, `assembly_not_cached 1,322 → 314`.
-11. ~~**[bottleneck] Populate `fasta_url` for URL-less non-NCBI rows**~~ 🟡 **PARTIALLY DONE (2026-07-12)** — plant stream now fills by `organism` fallback in merge (541/541). `plant_gtf` and most phytozome rows now carry URL metadata in merged output; however phytozome genome FASTA remains unavailable as a reliable source in current config workflow. **Decision:** defer phytozome (203 rows).
+11. ~~**[bottleneck] Populate `fasta_url` for URL-less non-NCBI rows**~~ ✅ **DONE (2026-07-14)** — plant stream fills by `organism` fallback in merge (541/541); `plant_gtf` and phytozome rows carry URL metadata. The phytozome genome-FASTA gap (203 rows, previously deferred 2026-07-12) is now closed by `download_phytozome_fasta` — see [Phytozome genome-FASTA extraction](#phytozome-genome-fasta-extraction-2026-07-14). Rerun pending to confirm the bucket clears.
 12. **[bottleneck, optional] Handle roman-numeral + dead assemblies** — roman↔arabic chrom mapping for worm/noncode `chrIV`; the "~48 dead assemblies" collapsed to **2** after the FTP-URL refactor + retry (2026-07-12): `GCF_000001215.3` (404, use `.4`) and `GCF_000001545.5` (`ponAbe2`, folder removed). Bump to current versions or accept as lost. Lowest ROI. See **L2**.
 
 ### Run-failure fixes (new — from 2026-07-13 run)
@@ -515,7 +528,7 @@ awk -F'\t' 'FNR>1{print $NF}' results/sequences/*.failed.tsv | sort | uniq -c
 
 ### Priority 0: Land the phytozome/JGI unblock (NEW 2026-07-12)
 - JGI auth is now implemented + 5 new species wired. **Re-run parse → phytozome resolution → merge** to grow the resolved set with the new species (vitis/potato/amborella/chlamydomonas/physcomitrella). See [Phytozome/JGI unblock](#phytozomejgi-unblock-2026-07-12).
-- To also *extract* phytozome coordinates, add genome-FASTA entries to the manifest (same token) — otherwise the new rows resolve but stay `assembly_not_cached`.
+- ✅ Genome-FASTA extraction is now wired via `download_phytozome_fasta` (2026-07-14) — the phytozome rows should extract on the next run instead of staying `assembly_not_cached`. See [Phytozome genome-FASTA extraction](#phytozome-genome-fasta-extraction-2026-07-14). Delete any stale `resources/cache/Phytozome/` first.
 
 **⚠️ Unblock to run *now* while JGI restores are pending (2026-07-12):** `resolve_phytozome_gtf` needs **all** configured GFF3s present and sits **upstream of merge→extract→report**, so any single missing phytozome file blocks the whole pipeline (not just the phytozome stream). Two problems found + fixed so a full run can proceed today:
 1. **Config path mismatch (fixed).** `citrus/sorghum/ricinus/oryza` pointed at `*.gene_exons.gff3.gz` filenames not on disk (disk has `*.gene.gff3.gz`). Because the `download_phytozome_gtf` script keys by *species name* while the resolve rule requests files by their `gtf:` *basename*, the mismatched paths triggered JGI downloads that fail with "manifest entry not found". Repointed the 4 `gtf:` paths to the existing `.gene.gff3.gz` files (verified they carry `mRNA` features the resolver reads). `touch`ed them so they postdate `manifest.json` (else mtime forces the same failing rebuild).
