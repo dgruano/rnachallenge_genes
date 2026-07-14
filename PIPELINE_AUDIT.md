@@ -1,9 +1,38 @@
 # Pipeline Audit — RNA Flanking Sequence Pipeline
 
-_Date: 2026-07-14 · Branch: `main` · HEAD: `afa65a7` (phytozome genome-FASTA extraction + assembly-collision inventory)_
+_Date: 2026-07-14 · Branch: `main` · HEAD: `7ab78ce` (phytozome genome-FASTA extraction + assembly-collision inventory) · post-rerun refresh_
 
 > **📌 This document is the source of truth for pipeline health.**
 > Every agent (or person) who investigates or fixes anything **must finish by updating this file** — add findings to the right section (Things That Break / Overcomplicated Patterns / Legitimate Data Issues), tick or renumber the Actionables, and refresh Next Steps. Leave the audit consistent with reality before ending your turn. If a prior conclusion is wrong, mark it superseded rather than deleting the history.
+
+## Run refresh — 2026-07-14 (phytozome fix landed)
+
+Latest `results/` (`grep -c '^>' output.fasta` + `FNR>1` failure tally). Two reruns on 2026-07-14: the first (post-`d546a0e`) only half-applied the phytozome fix; the **phytozome resolver regeneration (Priority 0) is now DONE** and the 503 rows extract.
+
+| Signal | post-#10 | half-applied | **fix landed** | Δ vs prev |
+|---|---|---|---|---|
+| **Sequences extracted** | 13,199 | 15,319 | **15,820** | +501 ✅ |
+| assembly_not_cached | 314 | 614 | **111** | −503 ✅ |
+| chrom_not_found | 82 | 85 | **87** | +2 |
+| sequence_error | 1 | 1 | 1 | — |
+| **Real failure total** | 397 | 700 | **199** | −501 |
+
+✅ **Phytozome cleared.** `resolved_ids.tsv` now carries per-species keys (`phytozome_vitis_vinifera` 140, `phytozome_sorghum_bicolor` 131, `phytozome_physcomitrella_patens` 122, `phytozome_oryza_sativa` 30, `phytozome_amborella_trichopoda` 34, `phytozome_citrus_sinensis` 26, `phytozome_ricinus_communis` 14, `phytozome_chlamydomonas_reinhardtii` 4, `phytozome_zea_mays` 2 = 503), matching the cached genomes. All extract except 2 `phytozome_zea_mays` rows (now a chrom-naming miss, not assembly).
+
+**Remaining `assembly_not_cached` (111) — all previously-known, none phytozome:**
+
+| bucket | accession | count | status |
+|---|---|---|---|
+| ensembl | `ARS-UCD2.0` (cattle) | 53 | Class 2 bare-name — needs `fasta_url` populated |
+| flybase | `BDGP6` (drosophila) | 33 | Class 2 bare-name — needs `fasta_url` populated |
+| noncode | `GCF_000001545.5` (ponAbe2) | 24 | L2 genuinely dead (FTP folder removed) |
+| noncode_v4 | `GCF_000001215.3` (dmel) | 1 | L2 genuinely dead (404, use `.4`) |
+
+So **86 of 111 are recoverable** (cattle 53 + fly 33 non-NCBI genomes); 25 are genuine dead ends.
+
+**`chrom_not_found` (87) — dominated by plant_gtf tomato 70:** all `GCA_000188115.2` (tomato SL3.0), bare `1`–`12`. FASTA seqids are GenBank accessions `CM001064.2`–`CM001075.2` (from the `.fai`); this GCA **has** an NCBI `assembly_report.txt` that would map them, but the genome was cached via the Ensembl-Plants URL path which never fetched the report. Residual: noncode 9, ncbi 4, phytozome_zea_mays 2, plant_gtf potato 1, noncode_v4 1 — small data/naming gaps.
+
+---
 
 ## TL;DR — UPDATED 2026-07-12 POST-FIX
 
@@ -21,7 +50,7 @@ Remaining failures were mostly legitimate data gaps. The only sizable unresolved
 
 ## Phytozome genome-FASTA extraction (2026-07-14)
 
-✅ **CODE-DONE, RERUN PENDING.** Closes the last open half of the phytozome deferral — the 203 `assembly_not_cached` rows that resolved to coordinates but had no genome to slice against. Landed in `d546a0e` (`feat(phytozome): cache genome FASTAs so resolved rows extract`):
+✅ **CODE-DONE + VERIFIED (2026-07-14 rerun).** The resolver now emits per-species `phytozome_<species>` keys into the resolved table, matching the cached genomes; **all 503 phytozome rows extract** (`assembly_not_cached` 614 → 111, none phytozome; extraction 15,319 → 15,820). See [Run refresh 2026-07-14](#run-refresh--2026-07-14-phytozome-fix-landed). Closes the last open half of the phytozome deferral — the 203 `assembly_not_cached` rows that resolved to coordinates but had no genome to slice against. Landed in `d546a0e` (`feat(phytozome): cache genome FASTAs so resolved rows extract`):
 
 - **Per-species genome cache.** New `download_phytozome_fasta` rule ([download_phytozome_fasta.smk](workflow/rules/download_phytozome_fasta.smk) + [download_phytozome_fasta.py](workflow/scripts/download_phytozome_fasta.py)) fetches each species' JGI genome FASTA to `resources/cache/<assembly_accession>/genome.fasta` — exactly where `extract_sequences` looks. Fan-out is driven by the resolved phytozome species and feeds `.assemblies_ready`.
 - **Collision fix.** The resolver now emits `assembly_accession = phytozome_<species>` instead of a shared literal `Phytozome`, so the 9 phytozome species no longer collapse into one cache dir. Version-matched JGI lookup keeps annotation↔assembly consistent.
@@ -526,9 +555,11 @@ awk -F'\t' 'FNR>1{print $NF}' results/sequences/*.failed.tsv | sort | uniq -c
 - **#18 — plant BioMart (L5/L6):** 🔴 not transient — Plants retired old assemblies/namespaces. Tomato covered by plant_gtf; 1603 rice(RAP)+maize(GRMZM) rows need pinned AGPv3 GTF + RAP normalization, not the mart.
 - **#19 — Ensembl mislabel (TB-3):** ✅ fixed on branch `fix/parse-ids-embedded-ncbi-substring` (`208b215`), ⏸ **deferred merge** — Stage-1 change forces a full rerun; merge when one is scheduled.
 
-### Priority 0: Land the phytozome/JGI unblock (NEW 2026-07-12)
-- JGI auth is now implemented + 5 new species wired. **Re-run parse → phytozome resolution → merge** to grow the resolved set with the new species (vitis/potato/amborella/chlamydomonas/physcomitrella). See [Phytozome/JGI unblock](#phytozomejgi-unblock-2026-07-12).
-- ✅ Genome-FASTA extraction is now wired via `download_phytozome_fasta` (2026-07-14) — the phytozome rows should extract on the next run instead of staying `assembly_not_cached`. See [Phytozome genome-FASTA extraction](#phytozome-genome-fasta-extraction-2026-07-14). Delete any stale `resources/cache/Phytozome/` first.
+### Priority 0: Regenerate the phytozome resolved table ✅ DONE (2026-07-14)
+Resolver regenerated with per-species `phytozome_<species>` keys; **all 503 phytozome rows now extract** (`assembly_not_cached` 614 → 111, extraction 15,319 → **15,820**). Verified in [Run refresh 2026-07-14](#run-refresh--2026-07-14-phytozome-fix-landed). The phytozome deferral (open since Apr 27) is fully closed.
+
+### Priority 0b: plant_gtf tomato chrom naming (NEW — 70 rows, now the largest bucket) 🟡
+`chrom_not_found` plant_gtf 71, all `GCA_000188115.2` (tomato SL3.0) bare `1`–`12`. The FASTA seqids are GenBank accessions `CM001064.2`–`CM001075.2` (verified from the `.fai`), so `1`→`CM001064.2` … `12`→`CM001075.2`. **This is a `GCA_` NCBI assembly and DOES have an `assembly_report.txt`** — the existing `chrom_translation` map (Assigned-Molecule → GenBank-Accn) would resolve it for free. Root cause: the genome was cached via the **Ensembl-Plants URL path**, which doesn't fetch the NCBI report. **Laziest fix: when the cache key / `fasta_url` carries a `GCA_`/`GCF_` accession, still fetch its NCBI `assembly_report.txt` (`ftp_assembly_folder()` already exists) even if the genome FASTA came from a non-NCBI URL.** Recovers all 70 with no new mapping code.
 
 **⚠️ Unblock to run *now* while JGI restores are pending (2026-07-12):** `resolve_phytozome_gtf` needs **all** configured GFF3s present and sits **upstream of merge→extract→report**, so any single missing phytozome file blocks the whole pipeline (not just the phytozome stream). Two problems found + fixed so a full run can proceed today:
 1. **Config path mismatch (fixed).** `citrus/sorghum/ricinus/oryza` pointed at `*.gene_exons.gff3.gz` filenames not on disk (disk has `*.gene.gff3.gz`). Because the `download_phytozome_gtf` script keys by *species name* while the resolve rule requests files by their `gtf:` *basename*, the mismatched paths triggered JGI downloads that fail with "manifest entry not found". Repointed the 4 `gtf:` paths to the existing `.gene.gff3.gz` files (verified they carry `mRNA` features the resolver reads). `touch`ed them so they postdate `manifest.json` (else mtime forces the same failing rebuild).
@@ -536,9 +567,9 @@ awk -F'\t' 'FNR>1{print $NF}' results/sequences/*.failed.tsv | sort | uniq -c
 
 Result: dry-run drops from 37 → 29 jobs with **0 phytozome download jobs** and no missing inputs. Run `snakemake --profile profiles/default --rerun-triggers=mtime`. When JGI restores vitis/physcomitrella (poll `files.jgi.doe.gov/request_archived_files/requests/652368`), uncomment them (and add solanum_tuberosum's GFF3), then rerun `resolve_phytozome_gtf` + downstream.
 
-### Priority 1: Residual non-NCBI URL gaps (post-#10)
-- `assembly_not_cached` residual is 314: phytozome 203 (extraction still needs genome FASTA — see Priority 0), ensembl 53, flybase 33, noncode(+v4) 25.
-- For ensembl/flybase/noncode residuals, continue same manifest mechanism by filling reliable `fasta_url` in their resolver/config paths.
+### Priority 1: Residual non-NCBI URL gaps 🟠 NEXT BIGGEST — 86 recoverable rows
+- `assembly_not_cached` residual is **111**: phytozome cleared (Priority 0 ✅), leaving **ensembl `ARS-UCD2.0` (cattle, 53) + flybase `BDGP6` (fly, 33) = 86 recoverable**, plus 25 genuine L2 dead ends (ponAbe2 24 + dmel 1).
+- These 86 are non-NCBI genomes with **bare assembly names** (`ARS-UCD2.0`, `BDGP6`) that don't carry a `fasta_url`, so the manifest fan-out has nothing to download. Fill reliable `fasta_url` for the cattle/fly assemblies in their resolver/config paths (Ensembl / FlyBase FTP), same manifest mechanism as plant_gtf. This is the largest remaining *recoverable* extraction bucket after the tomato-chrom fix (Priority 0b).
 - When retrying downloads, target only the relevant `resources/cache/<cache_key>/.download_done` files derived from failed rows; do not force the already-ok assemblies.
 - Prefer [workflow/scripts/list_failed_download_targets.py](workflow/scripts/list_failed_download_targets.py) over one-off shell parsing when generating the target list.
 
