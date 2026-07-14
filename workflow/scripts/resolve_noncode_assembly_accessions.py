@@ -35,22 +35,11 @@ if "snakemake" in globals():
     out_resolved = snakemake.output.resolved
     out_unresolved = snakemake.output.unresolved
 
-# ── Hardcoded UCSC → GCF_/GCA_ mapping ────────────────────────────────────
-# Mapping of UCSC genome build names to NCBI assembly accessions
-# Based on the 10 species present in NONCODE dataset
-# Verified against NCBI Assembly database: https://www.ncbi.nlm.nih.gov/assembly/
-UCSC_TO_GCF_MAPPING = {
-    "TAIR10": "GCF_000001735.4",  # Arabidopsis thaliana (TAIR10.1)
-    "CE10": "GCF_000002985.6",  # Caenorhabditis elegans (WBcel235)
-    "DM6": "GCF_000001215.4",  # Drosophila melanogaster (Release 6 plus ISO1 MT)
-    "RN6": "GCF_000001895.5",  # Rattus norvegicus (Rnor_6.0)
-    "MONDOM5": "GCF_000002295.2",  # Monodelphis domesticus (MonDom5)
-    "PONABE2": "GCF_000001545.5",  # Pongo abelii (P_pygmaeus_2.0.2)
-    "GALGAL4": "GCF_000002315.6",  # Gallus gallus (GRCg6a)
-    "ORNANA1": "GCF_000002275.2",  # Ornithorhynchus anatinus (ASM227v2)
-    "BOSTAU6": "GCF_000003055.6",  # Bos taurus (Bos_taurus_UMD_3.1.1)
-    "DANRER10": "GCF_000002035.6",  # Danio rerio (GRCz11)
-}
+# ── UCSC → GCF_ mapping ────────────────────────────────────────────────────
+# Single source of truth: config/assembly_accessions.yaml (loaded via
+# ncbi_assembly_utils). Includes the noncode_v4 extras, which are harmless here
+# (never looked up for v5 builds).
+from ncbi_assembly_utils import EXTENDED_UCSC_TO_GCF as UCSC_TO_GCF_MAPPING
 
 RESOLVED_COLS = [
     "transcript_id",

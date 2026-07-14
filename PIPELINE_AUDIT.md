@@ -141,6 +141,17 @@ The ID prefix version-locks the build for these families, so we can pin the matc
 
 ---
 
+## Download-failure debug: TB-5 (ponAbe2 version) — 2026-07-14
+
+### TB-5. `PONABE2` mapped to a non-existent assembly version `GCF_000001545.5` ✅ DONE (2026-07-14)
+- **Symptom:** the only genuinely `unrecoverable` sentinel — `GCF_000001545.5` → `failed: could not determine NCBI FTP URL`. 149 orangutan (`Pongo abelii`) rows affected.
+- **Provenance:** enters via the **NONCODE** stream (prefix `NONPPY*`, UCSC build `ponAbe2`). Two static UCSC→GCF maps hardcoded the wrong version: [ncbi_assembly_utils.py:677](workflow/scripts/ncbi_assembly_utils.py#L677) and [resolve_noncode_assembly_accessions.py:48](workflow/scripts/resolve_noncode_assembly_accessions.py#L48).
+- **Root cause:** `GCF_000001545.5` **never existed** on NCBI FTP — only `.2/.3/.4` do (`.4 = P_pygmaeus_2.0.2`, the folder the comment already named). Off-by-one version typo.
+- **Fix:** both maps repointed to `GCF_000001545.4` (verified: `.4` FASTA serves HTTP 200). Also improved `ftp_assembly_folder` to **log the available folders on a miss** (`… — available: [GCF_000001545.2…, .3…, .4…]`) so version/accession mismatches are diagnosable from the log alone.
+- **Apply:** `.5` is baked into `resolved_ids.tsv` + manifest + sentinel, so `--clear` alone won't fix it — regenerate the NONCODE resolver output: rerun `results/noncode_assembly_resolved.tsv` → merge → download → extract.
+
+---
+
 ## Evidence (post-fix run, 2026-07-12 ~12:00 and reruns after bottleneck fixes)
 
 | Signal | Before fixes | After fixes 1–3 | After cleanup #5 | Status |

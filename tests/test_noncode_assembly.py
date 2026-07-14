@@ -64,7 +64,9 @@ class TestUCSCNameMapping:
     def test_map_ponabe2_to_gcf(self):
         """Test mapping of ponAbe2 to GCF accession."""
         result = map_ucsc_to_gcf("ponAbe2")
-        assert result == "GCF_000001545.5"  # Pongo abelii
+        assert (
+            result == "GCF_000001545.4"
+        )  # Pongo abelii (P_pygmaeus_2.0.2; .5 never existed)
 
     def test_map_galgal4_to_gcf(self):
         """Test mapping of galGal4 to GCF accession."""
@@ -466,7 +468,10 @@ class TestAllTenUCSCSpecies:
             ("dm6", "GCF_000001215.4"),  # Drosophila melanogaster (Release 6)
             ("rn6", "GCF_000001895.5"),  # Rattus norvegicus (Rnor_6.0)
             ("monDom5", "GCF_000002295.2"),  # Monodelphis domesticus (MonDom5)
-            ("ponAbe2", "GCF_000001545.5"),  # Pongo abelii (P_pygmaeus_2.0.2)
+            (
+                "ponAbe2",
+                "GCF_000001545.4",
+            ),  # Pongo abelii (P_pygmaeus_2.0.2; .5 never existed)
             ("galGal4", "GCF_000002315.6"),  # Gallus gallus (GRCg6a)
             ("ornAna1", "GCF_000002275.2"),  # Ornithorhynchus anatinus (ASM227v2)
             ("bosTau6", "GCF_000003055.6"),  # Bos taurus (Bos_taurus_UMD_3.1.1)

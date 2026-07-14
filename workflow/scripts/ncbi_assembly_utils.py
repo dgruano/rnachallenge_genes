@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
+import yaml
 from Bio import Entrez
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -667,23 +668,36 @@ def map_genomic_to_assembly_elink(
 
 
 # ── UCSC→GCF mapping (shared by merge_resolved for noncode_v4/2016) ──────────
+# Data lives in config/assembly_accessions.yaml — the single source of truth,
+# also consumed by resolve_noncode_assembly_accessions.py. Loaded here so the
+# curated accessions are editable/reviewable without touching Python.
 
-EXTENDED_UCSC_TO_GCF: dict[str, str] = {
-    "TAIR10": "GCF_000001735.4",  # Arabidopsis thaliana
-    "CE10": "GCF_000002985.6",  # Caenorhabditis elegans (WBcel235)
-    "DM6": "GCF_000001215.4",  # Drosophila melanogaster
-    "RN6": "GCF_000001895.5",  # Rattus norvegicus
-    "MONDOM5": "GCF_000002295.2",  # Monodelphis domesticus
-    "PONABE2": "GCF_000001545.5",  # Pongo abelii
-    "GALGAL4": "GCF_000002315.6",  # Gallus gallus (GRCg6a)
-    "ORNANA1": "GCF_000002275.2",  # Ornithorhynchus anatinus
-    "BOSTAU6": "GCF_000003055.6",  # Bos taurus (UMD 3.1.1)
-    "DANRER10": "GCF_000002035.6",  # Danio rerio (GRCz11)
-    # noncode_v4 extras not in the original noncode UCSC map
-    "DANRER7": "GCF_000002035.5",  # Danio rerio (GRCz10)
-    "DM3": "GCF_000001215.3",  # Drosophila melanogaster (BDGP5)
-    "GALGAL3": "GCF_000002315.5",  # Gallus gallus (Gallus_gallus-2.1)
-}
+ASSEMBLY_ACCESSIONS_YAML = (
+    Path(__file__).resolve().parents[2] / "config" / "assembly_accessions.yaml"
+)
+
+
+def load_ucsc_to_gcf(path: Path = ASSEMBLY_ACCESSIONS_YAML) -> dict[str, str]:
+    """Load the UCSC-build -> GCF_ accession map from config.
+
+    Keys are upper-cased for case-insensitive lookup. Fails loud if the file is
+    missing or an accession is reused across builds (which would silently pull
+    the wrong genome).
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"assembly accession config not found: {path}")
+    raw = yaml.safe_load(path.read_text()) or {}
+    mapping = {
+        str(k).strip().upper(): str(v).strip()
+        for k, v in (raw.get("ucsc_to_gcf") or {}).items()
+    }
+    dupes = {a for a in mapping.values() if list(mapping.values()).count(a) > 1}
+    if dupes:
+        raise ValueError(f"duplicate accessions in {path}: {sorted(dupes)}")
+    return mapping
+
+
+EXTENDED_UCSC_TO_GCF: dict[str, str] = load_ucsc_to_gcf()
 
 
 def apply_ucsc_to_gcf_mapping(df: pd.DataFrame) -> pd.DataFrame:

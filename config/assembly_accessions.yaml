@@ -1,0 +1,44 @@
+# Source of truth: UCSC genome-build name -> NCBI RefSeq assembly accession.
+#
+# WHY THIS FILE EXISTS
+#   NONCODE distributes coordinates keyed by UCSC build names (ponAbe2, dm6,
+#   ce10, ...). NCBI's genome FTP is keyed by versioned RefSeq accessions
+#   (GCF_XXXXXXXXX.N). This table bridges the two so the download stage can
+#   fetch the right genome FASTA. It is loaded by:
+#     - workflow/scripts/ncbi_assembly_utils.py            (EXTENDED_UCSC_TO_GCF)
+#     - workflow/scripts/resolve_noncode_assembly_accessions.py
+#
+# HOW TO VERIFY / EDIT AN ENTRY  (see docs/noncode_accession_resolution.md)
+#   1. The accession MUST include the version suffix (.N) and MUST exist on FTP:
+#        https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/<XXX>/<XXX>/<XXX>/
+#      (split the 9 digits after GCF_ into 3s). If the requested .N folder is
+#      absent, the download fails with "could not determine NCBI FTP URL".
+#   2. Confirm the organism against the assembly report on that FTP folder:
+#        <folder>/<name>_assembly_report.txt  -> "# Organism name:" / "# Taxid:"
+#      NOTE the folder/file NAME can carry a legacy submitter string that differs
+#      from the curated organism (see PONABE2 below) — trust Organism/Taxid, not
+#      the filename.
+#   3. Accessions must be unique across builds (enforced at load: no two builds
+#      may map to the same GCF_).
+
+ucsc_to_gcf:
+  # ── species present in the NONCODE v5 dataset ──────────────────────────────
+  TAIR10:   GCF_000001735.4   # Arabidopsis thaliana (TAIR10.1)
+  CE10:     GCF_000002985.6   # Caenorhabditis elegans (WBcel235)
+  DM6:      GCF_000001215.4   # Drosophila melanogaster (Release 6 plus ISO1 MT)
+  RN6:      GCF_000001895.5   # Rattus norvegicus (Rnor_6.0)
+  MONDOM5:  GCF_000002295.2   # Monodelphis domestica (MonDom5)
+  PONABE2:  GCF_000001545.4   # Pongo abelii, taxid 9601. NCBI folder is named
+                              # "P_pygmaeus_2.0.2" — a LEGACY submitter name from
+                              # the 2010 Orangutan Genome Sequencing Consortium,
+                              # NOT a species mix. Organism is P. abelii per the
+                              # assembly report. Version .5 never existed on FTP
+                              # (only .2/.3/.4); .4 is the ponAbe2 build.
+  GALGAL4:  GCF_000002315.6   # Gallus gallus (GRCg6a)
+  ORNANA1:  GCF_000002275.2   # Ornithorhynchus anatinus (ASM227v2)
+  BOSTAU6:  GCF_000003055.6   # Bos taurus (Bos_taurus_UMD_3.1.1)
+  DANRER10: GCF_000002035.6   # Danio rerio (GRCz11)
+  # ── extra builds referenced by NONCODE v4 (older genome versions) ──────────
+  DANRER7:  GCF_000002035.5   # Danio rerio (GRCz10)
+  DM3:      GCF_000001215.3   # Drosophila melanogaster (BDGP5)
+  GALGAL3:  GCF_000002315.5   # Gallus gallus (Gallus_gallus-2.1)
