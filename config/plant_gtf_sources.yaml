@@ -17,29 +17,39 @@
 
 plant_gtf_sources:
 
+  # ── PreLnc coding → Ensembl Plants release-44 (2026-07-14) ──────────
+  # These three serve the PreLnc-coding namespaces (arabidopsis AT…, rice
+  # Os…t…, maize Zm00001d…). Repointed from release-60 to release-44.
+  # Every `FILL_ME__…` is a PLACEHOLDER — grep FILL_ME to find them.
+  # Expected release-44 URL pattern (verify the assembly-name token, esp. maize):
+  #   .../pub/plants/release-44/gtf/<species>/<Species>.<ASSEMBLY>.44.gtf.gz
+  #   .../pub/plants/release-44/fasta/<species>/dna/<Species>.<ASSEMBLY>.dna.toplevel.fa.gz
+  # Maize v44 assembly is B73_RefGen_v4 (AGPv4) — matches Zm00001d…, NOT GRMZM
+  # (GRMZM = AGPv3, resolved via phytozome_gtf_sources.yaml instead).
   arabidopsis_thaliana:
-    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.60.gtf.gz"
+    url: "FILL_ME__ensembl_plants_release44_arabidopsis_thaliana_gtf_gz"
     assembly_name: "TAIR10"
     assembly_accession: "GCF_000001735.4"
-    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz"
+    fasta_url: "FILL_ME__ensembl_plants_release44_arabidopsis_thaliana_fasta_toplevel_gz"
     gtf_format: "gtf"
-    release: "60"
+    release: "44"
 
   oryza_sativa:
-    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/oryza_sativa/Oryza_sativa.IRGSP-1.0.60.gtf.gz"
+    url: "FILL_ME__ensembl_plants_release44_oryza_sativa_gtf_gz"
     assembly_name: "IRGSP-1.0"
     assembly_accession: null
-    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/oryza_sativa/dna/Oryza_sativa.IRGSP-1.0.dna.toplevel.fa.gz"
+    fasta_url: "FILL_ME__ensembl_plants_release44_oryza_sativa_fasta_toplevel_gz"
     gtf_format: "gtf"
-    release: "60"
+    release: "44"
 
+  # Maize Zm00001d… (AGPv4). GRMZM… is handled by phytozome (AGPv3), not here.
   zea_mays:
-    url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/zea_mays/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.60.gtf.gz"
-    assembly_name: "Zm-B73-REFERENCE-NAM-5.0"
+    url: "FILL_ME__ensembl_plants_release44_zea_mays_B73_RefGen_v4_gtf_gz"
+    assembly_name: "B73_RefGen_v4"
     assembly_accession: null
-    fasta_url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna.toplevel.fa.gz"
+    fasta_url: "FILL_ME__ensembl_plants_release44_zea_mays_B73_RefGen_v4_fasta_toplevel_gz"
     gtf_format: "gtf"
-    release: "60"
+    release: "44"
 
   solanum_lycopersicum_cnit:
     url: "https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-60/gtf/solanum_lycopersicum/Solanum_lycopersicum.SL3.0.60.gtf.gz"
