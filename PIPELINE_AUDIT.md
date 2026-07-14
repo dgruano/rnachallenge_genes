@@ -347,6 +347,23 @@ Net effect: extraction improved **12,163 → 13,199** and `assembly_not_cached` 
 
 ---
 
+## Refactors (deferred, non-blocking)
+
+### R1. Rename `ncbi_chromosome_resolved.tsv` — misleading name 🟡
+The file produced by `resolve_ncbi_chromosome_accessions` is **not** NCBI-only:
+that rule passes *every* resolved row through and only *patches* NCBI chromosome
+names, so the file is the full merged resolved table (carries all phytozome,
+ensembl, noncode, … rows). The whole download+extract stage keys off it, which
+makes the name actively misleading. Rename to something honest, e.g.
+`resolved_chrom_patched.tsv`. Touches `resolve_ncbi_chromosome_accessions.smk`
+(output), `download_assemblies.smk` + `extract_sequences.smk` (inputs),
+`prepare_accession_list` + `aggregate_downloads.py` docstrings. Deferred because
+it's a pure rename with no behavior change; do it alongside a run that already
+regenerates these outputs. _Noted 2026-07-14 during phytozome-FASTA work (which
+deliberately reads the honestly-named `resolved_ids.tsv` for its fan-out)._
+
+---
+
 ## Legitimate Data Issues (inherent, not pipeline bugs)
 
 These are **not** fixable by better code — they stem from the source data itself. Distinguish them from the fixable bottlenecks above so we don't chase unrecoverable rows. Numbers are current-run failure counts.

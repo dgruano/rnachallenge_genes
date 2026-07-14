@@ -121,6 +121,65 @@ def select_files(files, prefer_name=None):
     }
 
 
+ANNOTATION_SUFFIXES = (".gene_exons.gff3.gz", ".gene.gff3.gz", ".gff3.gz")
+
+
+def annotation_stem(file_name):
+    """Version stem an annotation shares with its assembly mate.
+
+    ``Csinensis_154_v1.1.gene.gff3.gz`` -> ``Csinensis_154_v1.1``. The genome
+    FASTA of the *same* Phytozome version is named ``<stem>.fa.gz`` (or
+    ``<stem>.softmasked.fa.gz`` etc.), so the stem is how we guarantee the FASTA
+    is the assembly the coordinates were resolved against.
+    """
+    name = (file_name or "").strip()
+    lower = name.lower()
+    for suf in ANNOTATION_SUFFIXES:
+        if lower.endswith(suf):
+            return name[: -len(suf)]
+    return name
+
+
+def select_assembly_for(files, annotation_file_name):
+    """Pick the assembly ``.fa.gz`` that mates ``annotation_file_name`` by version.
+
+    Match on the annotation's version stem (``<stem>.`` prefix, so ``v1.1`` does
+    not swallow ``v1.10``), preferring unmasked over masked. When no stem match
+    exists, fall back to ``select_files``' best-assembly heuristic with a warning
+    so a version-name mismatch degrades to "best guess" rather than nothing.
+    """
+    assemblies = [
+        f
+        for f in (files or [])
+        if _file_type(f) == "assembly"
+        and (f.get("file_name") or "").lower().endswith(".fa.gz")
+    ]
+    if not assemblies:
+        return None
+
+    stem = annotation_stem(annotation_file_name).lower()
+    matches = (
+        [
+            f
+            for f in assemblies
+            if (f.get("file_name") or "").lower().startswith(stem + ".")
+        ]
+        if stem
+        else []
+    )
+    if matches:
+        # False (unmasked) sorts before True (masked).
+        matches.sort(key=lambda f: "masked" in (f.get("file_name") or "").lower())
+        return matches[0]
+
+    print(
+        f"WARNING: no assembly matched annotation stem '{stem}'; "
+        f"falling back to best-guess assembly",
+        file=sys.stderr,
+    )
+    return select_files(files)["sequence"]
+
+
 def describe(f):
     """Build a small dict with the fields a caller needs to download."""
     if not f:
@@ -165,6 +224,28 @@ def resolve_annotation(genome_id, token, prefer_name=None, per_page=MAX_PAGE_SIZ
     return describe(select_files(files, prefer_name=prefer_name)["annotation"])
 
 
+def resolve_pair(genome_id, token, prefer_name=None, per_page=MAX_PAGE_SIZE):
+    """Resolve a genome_id to its version-matched (annotation, assembly) pair.
+
+    ``prefer_name`` pins the exact annotation (a manifest ``portal_file_name``);
+    the assembly is then chosen to mate that annotation's version. Each value is
+    describe()'s dict (file_name, _id, file_status, download_url) or None.
+    """
+    files = fetch_files(genome_id, token, per_page=per_page)
+    if not files:
+        return {"annotation": None, "sequence": None}
+    ann = select_files(files, prefer_name=prefer_name)["annotation"]
+    seq = select_assembly_for(files, ann.get("file_name") if ann else None)
+    return {"annotation": describe(ann), "sequence": describe(seq)}
+
+
+def resolve_sequence(genome_id, token, prefer_name=None, per_page=MAX_PAGE_SIZE):
+    """Resolve a genome_id to its version-matched genome FASTA (see resolve_pair)."""
+    return resolve_pair(genome_id, token, prefer_name=prefer_name, per_page=per_page)[
+        "sequence"
+    ]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--genome-id", required=True, help="Phytozome genome_id")
@@ -195,7 +276,9 @@ def main():
     result = {
         "genome_id": args.genome_id,
         "annotation": describe(picked["annotation"]),
-        "sequence": describe(picked["sequence"]),
+        "sequence": describe(
+            select_assembly_for(files, (picked["annotation"] or {}).get("file_name"))
+        ),
     }
 
     if args.json:

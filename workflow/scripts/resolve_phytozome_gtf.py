@@ -321,7 +321,11 @@ for _, row in df.iterrows():
             "gene_id": hit.get("gene_id", ""),
             "gene_symbol": hit.get("gene_symbol", "") or hit.get("gene_id", ""),
             "organism": species,
-            "assembly_accession": "Phytozome",
+            # Per-species cache key: extract maps assembly_accession -> cache dir
+            # (resources/cache/<acc>/genome.fasta), so a shared "Phytozome" would
+            # collide across species. download_phytozome_fasta caches the genome
+            # FASTA under this same key.
+            "assembly_accession": f"phytozome_{species}",
             "assembly_name": src_meta.get(
                 "assembly_name", src_meta.get("assembly", "")
             ),
