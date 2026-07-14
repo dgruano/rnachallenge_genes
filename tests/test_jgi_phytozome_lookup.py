@@ -9,7 +9,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "workflow" / "scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from jgi_phytozome_lookup import select_files
+from jgi_phytozome_lookup import annotation_stem, select_assembly_for, select_files
 
 
 def _f(name, ftype, _id="deadbeef", status="RESTORED"):
@@ -93,3 +93,52 @@ def test_none_when_category_absent():
     result = select_files(files)
     assert result["sequence"] is None
     assert result["annotation"] is not None
+
+
+# ── version-matched assembly selection ───────────────────────
+
+
+def test_annotation_stem_strips_variants():
+    assert annotation_stem("Csinensis_154_v1.1.gene.gff3.gz") == "Csinensis_154_v1.1"
+    assert (
+        annotation_stem("Stuberosum_206_v3.4.gene_exons.gff3.gz")
+        == "Stuberosum_206_v3.4"
+    )
+    assert annotation_stem("amborella.gff3.gz") == "amborella"
+    assert annotation_stem(None) == ""
+
+
+def test_select_assembly_matches_annotation_version_unmasked():
+    # Two versions on disk; the assembly must mate the resolved annotation's
+    # version (v1.1), and prefer the unmasked file over the softmasked one.
+    files = [
+        _f("Csinensis_154_v1.0.fa.gz", "assembly", _id="wrong_version"),
+        _f("Csinensis_154_v1.1.softmasked.fa.gz", "assembly", _id="masked"),
+        _f("Csinensis_154_v1.1.fa.gz", "assembly", _id="right"),
+    ]
+    picked = select_assembly_for(files, "Csinensis_154_v1.1.gene.gff3.gz")
+    assert picked["_id"] == "right"
+
+
+def test_select_assembly_version_boundary_not_prefix():
+    # stem 'v1.1' must not swallow 'v1.10'.
+    files = [
+        _f("X_1_v1.10.fa.gz", "assembly", _id="v110"),
+        _f("X_1_v1.1.fa.gz", "assembly", _id="v11"),
+    ]
+    assert select_assembly_for(files, "X_1_v1.1.gene.gff3.gz")["_id"] == "v11"
+
+
+def test_select_assembly_falls_back_when_no_stem_match():
+    # Annotation version has no assembly mate -> best-guess unmasked assembly.
+    files = [
+        _f("X_1_v9.9.softmasked.fa.gz", "assembly", _id="masked"),
+        _f("X_1_v9.9.fa.gz", "assembly", _id="best"),
+    ]
+    picked = select_assembly_for(files, "X_1_v1.1.gene.gff3.gz")
+    assert picked["_id"] == "best"
+
+
+def test_select_assembly_none_when_no_assembly():
+    files = [_f("X_1_v1.1.gene.gff3.gz", "annotation/gene")]
+    assert select_assembly_for(files, "X_1_v1.1.gene.gff3.gz") is None

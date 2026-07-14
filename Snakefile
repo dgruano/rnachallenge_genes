@@ -59,6 +59,7 @@ include: "workflow/rules/resolve_abandoned_accessions.smk"  # GTF-based third-pa
 include: "workflow/rules/merge_resolved.smk"             # unify all three DB streams
 include: "workflow/rules/resolve_ncbi_chromosome_accessions.smk"  # Map NC_/NT_/NW_ → GCF_/GCA_ post-merge
 include: "workflow/rules/download_assemblies.smk"        # checkpoint: cache genome FASTAs
+include: "workflow/rules/download_phytozome_fasta.smk"   # cache Phytozome genome FASTAs (JGI)
 include: "workflow/rules/extract_sequences.smk"
 include: "workflow/rules/annotate_with_tools.smk"
 include: "workflow/rules/report.smk"

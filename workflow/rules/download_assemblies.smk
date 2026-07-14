@@ -106,6 +106,13 @@ rule download_assemblies_done:
             f"{LOGS}/download_assembly/{{accession}}.log",
             accession=get_assemblies(wc),
         ),
+        # Phytozome genome FASTAs come from a separate JGI-authed fan-out
+        # (download_phytozome_fasta.smk); gate the sentinel on them too so
+        # extract_sequences waits for them.
+        phytozome      = lambda wc: expand(
+            f"{CACHE}/phytozome_{{species}}/.download_done",
+            species=get_phytozome_species(wc),
+        ),
         accession_list = f"{RESULTS}/assembly_download_manifest.tsv",
         resolved       = f"{RESULTS}/ncbi_chromosome_resolved.tsv",
     output:
