@@ -404,6 +404,16 @@ it's a pure rename with no behavior change; do it alongside a run that already
 regenerates these outputs. _Noted 2026-07-14 during phytozome-FASTA work (which
 deliberately reads the honestly-named `resolved_ids.tsv` for its fan-out)._
 
+
+### R2. Change formatted strings for snakemake pathvars
+This is the appropriate coding pattern.
+
+### R3. Double check hardcoded sources and mapping dicts
+- PREFIX_TO_SPECIES
+- others
+
+### R4. Group output files in folders to avoid clutter
+
 ---
 
 ## Legitimate Data Issues (inherent, not pipeline bugs)
