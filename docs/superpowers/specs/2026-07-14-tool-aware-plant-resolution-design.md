@@ -1,4 +1,7 @@
-# Design — Tool-aware plant transcript resolution (RNAPlonc / PreLnc)
+# Design — Namespace-keyed plant transcript resolution (RNAPlonc / PreLnc)
+
+_(Earlier drafts explored a tool-aware layer; §4 records why it was dropped for
+namespace-keyed resolution + ID-presence verification.)_
 
 _Date: 2026-07-14 · Branch: `fix/rnaplonc-ensembl-plants-v44` · Status: DRAFT for review_
 
@@ -52,63 +55,96 @@ Two consequences:
 | citrus | `orange…` | RNAPlonc | Phytozome v11 | v1.1 | repoint v10→v11 |
 | potato | `PGSC…` | RNAPlonc | Phytozome v11 | v? | repoint v10→v11 |
 
-Out of scope (deferred, need source articles): PLncPRO / CNIT maize & vitis; the exact
-LGC-rice vs PreLnc-rice tie-break beyond what namespace+tool already give.
+Out of scope (deferred, need source articles): PLncPRO / CNIT maize & vitis. Rice `Os…` needs
+no tie-break — PreLnc(v44) and LGC(r30) share the IRGSP-1.0 assembly, so coordinates agree.
 
-## 4. Architecture — add the tool as a resolution key
+## 4. Architecture — namespace-keyed resolution, verified by ID presence
 
-**Principle:** namespace already disambiguates *most* cases (GRMZM vs Zm00001d split maize
-without the tool). The tool is required only where one namespace is shared across tools with
-different sources — today that is **rice `Os…`** (PreLnc v44 vs LGC r30). So we add a
-*minimal* tool-aware layer, not a rewrite.
+**Decision (2026-07-14, user-approved):** resolve by **namespace → source**; the tool is
+*not* a resolution key. The `by_tool` layer from the earlier draft is **dropped**.
 
-**4a. Join the tool into the plant stream.** In the plant/phytozome resolvers (or a small
-shared helper), left-join `tool_source_map.tsv` on `transcript_id` to attach `primary_tool`.
-This is the only new data dependency.
+**Why the tool is redundant — proven empirically, not asserted.** The worry was that one
+species is served by different assemblies across tools. Tested by ID presence against an
+on-disk AGPv4 maize annotation:
 
-**4b. Config gains an optional per-tool override.** Extend the per-species config entry with
-an optional `by_tool:` map. Species with no `by_tool` behave exactly as today (backward
-compatible). Example:
+- **0 of 100** input `GRMZM…` cores are findable in AGPv4 (`Zea_maysb73v4.AGPv4.gff3.gz`),
+  even with generous substring matching. `Zm00001d…` is the native AGPv4 namespace (2.8M
+  lines). → RNAPlonc's `GRMZM` and PreLnc-coding's `Zm00001d` are **disjoint namespaces on
+  different assemblies**. The tool split *is* the namespace split.
+- Rice `Os…t` shared by PreLnc(v44) + LGC(r30): both annotate the **same assembly**
+  (IRGSP-1.0), so genomic coordinates agree; the tool only selects an annotation *release*.
 
-```yaml
-oryza_sativa:
-  # default (LGC etc.) stays on the existing release
-  url: ".../release-30/.../Oryza_sativa.IRGSP-1.0.30.gtf.gz"
-  release: "30"
-  by_tool:
-    PreLnc: { url: "FILL_ME__ensembl_plants_v44_oryza_gtf", release: "44" }
-```
+No plant namespace in this input maps to two assemblies. So namespace suffices.
 
-Resolver rule: `source = entry.by_tool.get(primary_tool, entry_default)`.
+**The correctness guarantee is verification, not trust.** We do not rely on the
+namespace→assembly table being right. Each plant resolver computes a **per-species match
+rate** and **fails loudly** (non-zero exit) when a species that has input IDs matches
+≈0 against its configured source — the exact signature of a mis-pointed assembly (e.g.
+`GRMZM` accidentally aimed at AGPv4). A `min_match_rate` threshold (default e.g. 0.05, and
+a `--no-strict` escape hatch) gates the assertion. This turns a silent zero-coordinate bug
+into an immediate, named failure.
 
-**4c. Multi-tool transcripts (OPEN DECISION — needs your call).** A transcript can list
-several tools (e.g. `GRMZM2G703059_T01` is in both RNAPlonc and PreLnc). `dani_notes.md`
-muses "maybe assume they all come from PreLnc". Proposed default precedence when a namespace
-is shared: **namespace wins first** (GRMZM is AGPv3 regardless of tool), and only for a
-genuinely tool-ambiguous namespace (rice `Os`) do we apply a tool precedence order
-(proposed: `PreLnc > LGC`). Please confirm or override.
+## 4bis. Differentiating assembly versions (the note)
+
+Same species ≠ same assembly. Tell them apart, in priority order:
+
+1. **Read the header's inline assembly tag when present.** PreLnc-coding maize headers carry
+   it literally: `>Zm00001d014535_T001 cdna chromosome:B73_RefGen_v4:5:…` → **AGPv4**.
+2. **Else the ID prefix/format encodes the assembly generation.** Maize is the canonical case:
+
+   | ID shape | Assembly | Ensembl/Phytozome home |
+   |---|---|---|
+   | `GRMZM2G…_T0N` / `AC……_FG…` | B73 **RefGen_v3** (AGPv3) | Phytozome v11 / GreeNC |
+   | `Zm00001d……_T00N` | B73 **RefGen_v4** (AGPv4) | Ensembl Plants **v44** |
+   | `Zm00001e……` | B73 **NAM 5.0** | Ensembl Plants ≥ r49 |
+
+   Rice: `Os…t…_0N` (RAP/IRGSP-1.0) vs `LOC_Os…` (MSU7) — same IRGSP-1.0 genome, different
+   annotation namespace. Arabidopsis `AT…G…` → TAIR10.
+3. **Always confirm by ID presence** before trusting a source:
+   `zgrep -c -Ff <sample_ids> <candidate>.gff3.gz`. A near-zero count means wrong assembly.
+   This is the same check the resolver automates (§4).
+
+**Consequence for config keying:** because `GRMZM` and `Zm00001d` share `species_hint =
+zea_mays` but need different assemblies, maize cannot be a single species entry. It is split
+by namespace: `GRMZM` → Phytozome v11 maize (AGPv3); `Zm00001d` → Ensembl Plants v44 (AGPv4).
+See §5 for how the split is keyed.
 
 ## 5. Config changes
 
-- **`phytozome_gtf_sources.yaml`** — repoint citrus/potato/oryza(maize?) to v11; **add
-  `brachypodium_distachyon` + `manihot_esculenta`**. `genome_id` / `portal_file_name` for
-  the added/repointed species resolved via `jgi_phytozome_lookup.py` (JGI token present in
-  `.env`). PURGED files fire a restore per existing CLAUDE.md workflow.
-- **`plant_gtf_sources.yaml`** (or a new `ensembl_plants_v44` block) — **placeholder** v44
-  entries for the PreLnc-coding namespaces: maize `Zm00001d` (AGPv4), rice `Os` (IRGSP-1.0),
-  arabidopsis (TAIR10). URLs marked `FILL_ME__…` for you to drop in.
+**RNAPlonc → Phytozome v11** (`phytozome_gtf_sources.yaml`):
+- **Add** `brachypodium_distachyon` (`Bradi…`) + `manihot_esculenta` (`Manes.…`) — currently
+  unresolved. `genome_id` / `portal_file_name` resolved via `jgi_phytozome_lookup.py` (JGI
+  token in `.env`); PURGED files fire a restore per CLAUDE.md.
+- **Maize `GRMZM` split:** add a Phytozome v11 maize (AGPv3) entry so `GRMZM` stops being
+  aimed at the AGPv4 file. Because the resolver keys on `species_hint`, the maize split is
+  enforced in `parse_ids.py`: give `Zm00001d…` a distinct `species_hint`
+  (`zea_mays` stays for `GRMZM`→Phytozome; `Zm00001d`→a v44 entry, §below). Verified by the
+  presence check (§4) — GRMZM must match the Phytozome file, not AGPv4.
+- Citrus/potato already resolve on their current Phytozome files; leave version as-is unless
+  the presence check flags a miss (do **not** churn working entries — ponytail).
+
+**PreLnc-coding → Ensembl Plants v44** (`plant_gtf_sources.yaml`, `release: "44"` entries with
+**`FILL_ME__` placeholder URLs** for you to fill):
+- rice `oryza_sativa` v44 (IRGSP-1.0), arabidopsis v44 (TAIR10), maize `Zm00001d` v44 (AGPv4).
+- Note: `Zm00001d` headers already carry inline coordinates (`chromosome:B73_RefGen_v4:…`);
+  the v44 GTF is the coordinate source of record and lets the presence check validate them.
 
 ## 6. Resolver changes
 
-- Attach `primary_tool` (§4a) in `resolve_plant_gtf.py` and/or `resolve_phytozome_gtf.py`.
-- Honor `by_tool` override (§4b).
-- Add missing prefixes only if a namespace routes to a resolver that lacks it (verify with a
-  dry-run; `Bradi/Manes/Sobic` already classify as `plant` + phytozome `species_hint`).
+- **Presence-verification guard** (the correctness core): in `resolve_plant_gtf.py` and
+  `resolve_phytozome_gtf.py`, after resolving, compute per-species match rate =
+  matched / (matched + unmatched with a configured source). If any such species falls below
+  `min_match_rate`, log an ERROR listing the species+source and exit non-zero (unless
+  `--no-strict`). One small unit test on the rate/threshold logic.
+- **Routing:** enforce the maize `GRMZM`/`Zm00001d` `species_hint` split in `parse_ids.py`;
+  confirm `Bradi/Manes/Sobic` reach the phytozome resolver via a dry-run (they classify as
+  `plant` + phytozome `species_hint` already). Add prefixes only where a dry-run shows a gap.
 
 ## 7. Audit + rerun
 
-- Update `PIPELINE_AUDIT.md`: supersede L6's "AGPv3/v44" guesswork with this tool-aware
-  model; record the corrected RNAPlonc=Phytozome-v11 / PreLnc=v44+GreeNC mapping.
+- Update `PIPELINE_AUDIT.md`: supersede L6's AGPv3/v44 guesswork with the verified
+  namespace→assembly model; record RNAPlonc=Phytozome-v11 / PreLnc=v44+GreeNC and the
+  presence-check guard.
 - Rerun: regenerate `classified_ids.tsv` → plant/phytozome resolvers → merge → download →
   extract → report. Because `parse_ids.py` is Stage 1, a namespace/routing change forces a
   broad rerun (noted in audit TB-3). Exact command supplied after implementation.
