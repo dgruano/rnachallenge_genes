@@ -84,6 +84,8 @@ rule all:
         not_found = f"{RESULTS}/matched_not_found.tsv",
         unresolv = f"{RESULTS}/unresolved.tsv",
         ambig    = f"{RESULTS}/ambiguous.tsv",
+        # Per-species input FASTA split
+        by_species = f"{RESULTS}/sequences_by_species",
 
 
 # ── Intermediate target: resolution report (no assembly download needed) ────

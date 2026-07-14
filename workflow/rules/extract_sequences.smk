@@ -100,3 +100,22 @@ rule extract_sequences:
         cpus_per_task   = 1,
     script:
         "../scripts/aggregate_sequences.py"
+
+
+rule split_input_by_species:
+    input:
+        resolved = f"{RESULTS}/ncbi_chromosome_resolved.tsv",
+        inputs   = config["input_fastas"],
+    output:
+        directory(f"{RESULTS}/sequences_by_species"),
+    log:
+        f"{LOGS}/split_input_by_species.log",
+    benchmark:
+        f"{BENCHMARKS}/split_input_by_species.tsv",
+    resources:
+        slurm_partition = "compute",
+        runtime         = 5,
+        mem_mb          = 512,
+        cpus_per_task   = 1,
+    script:
+        "../scripts/split_input_by_species.py"
