@@ -71,10 +71,67 @@ then exited on three independent failures. Root-caused below. Two are real bugs
   - **No more silent failures.** `download_phytozome_gtf.py` wraps its body so any exception writes to the rule log before re-raising.
   - **Live-verified:** `prefer_name` resolves the `.gene` file for all 4 (citrus/sorghum/ricinus `RESTORED`; oryza `Osativa_204_v7.0.gene.gff3.gz` `PURGED` → first run fires a JGI restore, rerun ≤24 h). Dry-run: 4 download + 1 resolve job, no `ProtectedOutput`/`MissingInput` errors, 6 moved files up-to-date under `--rerun-triggers=mtime`.
 
-### L5. `download_metadata_table` / solanum_lycopersicum — transient BioMart 🟡
+### L5. `download_metadata_table` / solanum_lycopersicum — renamed mart dataset, NOT transient 🟡 ✅ DONE (2026-07-13)
 - **Symptom:** `Empty response from BioMart for slycopersicum_eg_gene` on all 3 attempts. Only tomato failed; the other 4 species succeeded.
-- **Cause:** documented Ensembl Plants BioMart flakiness (see Performance & Troubleshooting in CLAUDE.md).
-- **Fix:** rerun — likely transient. If it persists, the tomato GTF downloaded fine (`solanum_lycopersicum.gtf.gz`), so the plant_gtf path already covers it; verify the mart dataset name against the current Plants release only if it keeps failing.
+- **Cause (verified on live mart 2026-07-13):** **not** flakiness. Ensembl Plants moved tomato to a new assembly (**SL4.0**) and a new mart dataset, `slgca000188115v5cm_eg_gene`. The old `slycopersicum_eg_gene` slug (hard-coded in `download_metadata_table.py:34` **and** `biomart_plant_batch.py:52`) no longer exists → empty result. The other 4 species kept their `*_eg_gene` slugs, so they still work.
+- **Why "fix the slug" is the wrong fix:** the SL4.0 dataset also changed the **ID namespace** — transcripts are `mRNA-Solyc…4.1`, genes `gene-Solyc…`, with bumped versions (our gene `Solyc06g068790.2.1` → mart `mRNA-Solyc06g068790.4.1`). BioMart filters on exact `ensembl_transcript_id`, so our SL3.0-era `Solyc…2.1` input IDs cannot match SL4.0 regardless of slug, and SL4.0 coordinates would *disagree* with the assembly the rest of the tomato path uses.
+- **Resolution:** tomato is already fully resolved via the **plant_gtf** path (70 rows) from `release-30 / GCA_000188115.2` (SL3.0), whose `Solyc…2` namespace matches the input. The metadata table for tomato is therefore redundant *and* unsatisfiable from the current mart. See **L6** for the same root cause hitting the batch rule at scale.
+- **✅ Fix landed (2026-07-13):** `solanum_lycopersicum` **commented out** (not deleted) of `external_metadata_tables` in [config/config.yaml](config/config.yaml), with an inline note pointing here. Kept as a comment so the intent is visible and it's trivially restorable if Ensembl Plants ever re-serves an SL3.0-compatible tomato mart. Dry-run confirms no `download_metadata_table` job for tomato; the other 4 species still run.
+
+### L6. `biomart_plant_batch` resolves **0 rows** — release-iteration finds nothing 🔴 ⏸ DETACHED (2026-07-13)
+
+**⏸ Detached as a quick fix (2026-07-13) — answers open decision #3 below.** Because the rule contributes **0 unique rows** (the 543 covered rows all resolve via plant_gtf/phytozome) while the flaky live-mart release loop makes runs slow and non-deterministic, [biomart_plant_batch.smk](workflow/rules/biomart_plant_batch.smk) no longer calls `biomart_plant_batch.py`. The rule now runs a trivial inline `run:` block that emits a **header-only** `biomart_resolved.tsv` (keeps `merge_resolved` satisfied) and passes every input ID through to `biomart_unresolved.tsv` with `reason=biomart_detached`. No network, `runtime` dropped 30→5 min / `mem_mb` 4096→512. Nothing else changed: `merge_resolved` is the only consumer of `biomart_resolved`, nothing consumes `biomart_unresolved`, and the plant GTF/Phytozome/Gramene fallbacks run off `external_*`, not BioMart. Dry-run parses clean. **Re-enable** by restoring `script: ../scripts/biomart_plant_batch.py` (script kept intact). This is a stop-gap, not the durable fix — the 1603-row gap still needs the pinned AGPv3/IRGSP GTFs (Tier 1 below).
+
+The rule (`workflow/scripts/biomart_plant_batch.py`) tries a list of mart endpoints in order — `current, release-60, 59, 58, 57` (`RELEASE_ENDPOINTS`) — per species, retrying until one "works". On the last run it produced **1 header line and 0 data rows** in `biomart_resolved.tsv`; all **2906** input rows fell through to `biomart_unresolved.tsv` with reasons like `biomart_no_match_<species>_all_releases_exhausted`. The rule is currently dead weight.
+
+**1 — Which transcripts depend on this rule.** Input is `results/external_unresolved.tsv` (plant IDs the local metadata-table fast path could not resolve). Of 2906 rows, **2146** are genuine plant-ID candidates (the other 760 are `not_plant_id`). By namespace:
+
+| Namespace | Count | Species | Status |
+|---|---|---|---|
+| `Os…t…_NN` (RAP-DB) | 958 | rice | ❌ unresolved by any source |
+| `GRMZM2G…_T0N` (AGPv3) | 640 | maize | ❌ unresolved by any source |
+| `PGSC…` | 467 | potato | ✅ already via plant_gtf |
+| `Solyc…`, `LOC_Os…`, `orange…` | ~81 | tomato/rice-MSU/citrus | ✅ already via plant_gtf / phytozome |
+
+Net: **1603 of 2146 are resolved by *nothing*** (958 rice RAP + 640 maize GRMZM + a few stragglers); the remaining 543 are already covered elsewhere (485 plant_gtf, 58 phytozome). So BioMart's *unique* contribution today is **zero**.
+
+**Root cause = same as L5:** the input IDs are **old-assembly namespaces that current Ensembl Plants no longer serves**. Maize `GRMZM2G…` is **AGPv3** (retired; current mart is `Zm-B73-NAM-5.0` → `Zm00001eb…` IDs). Rice `Os01t0102850_00` is **RAP-DB** native format; the live mart carries the hyphen form `Os01t0873800-01`. No live release matches → "all releases exhausted".
+
+**2 — Origin tools for these 2146 candidates** (`results/tool_source_map.tsv`): PreLnc 1382, RNAplonc 1023, LGC 210, CPPred 6, PLEK 4, CPC2 3 (plus singletons). These are the **plant lncRNA classifiers** (RNAplonc and PreLnc are plant-specific), i.e. exactly the tool datasets this challenge is benchmarking — so the 1603 gap is worth closing.
+
+**3 — Better source (no live BioMart, mirror the tomato precedent).** Both missing namespaces are available as **pinned Ensembl Plants FTP GTFs**, the same mechanism `plant_gtf_sources.yaml` already uses for tomato/potato. Assembly/release now **confirmed from the tool articles** (see `article_notes.md`, `dani_notes.md`):
+- **Maize GRMZM →** `release-31/gtf/zea_mays/Zea_mays.AGPv3.31.gtf.gz`. Confirmed it carries `transcript_id "GRMZM2G059865_T01"` — drop-in `plant_gtf` source. Provenance: PreLnc/RNAplonc; GRMZM (AGPv3) is the **GreeNC / non-coding** lineage — PreLnc *coding* maize is v44 `Zm00001d…`, a **different namespace** that needs the v4 build, not this one.
+- **Rice `Os…t…_0N` →** do **not** normalize to modern `-01`. The articles show LGC/PreLnc used **release-26** (coding, `IRGSP-1.0.26`) and **release-30** (ncrna, `IRGSP-1.0.30`), whose GTFs natively use the `Os…t…_0N` underscore format that matches our input. Pin release-26 + release-30 rice GTFs (URLs in the notes). This supersedes my earlier release-60 + normalization guess.
+
+**Recommendation:** stop depending on the flaky live-mart release loop for plant coordinates. Add the AGPv3 maize GTF/FASTA to `plant_gtf_sources.yaml`, add RAP-ID normalization for rice, and treat `biomart_plant_batch` as a best-effort last resort (or retire it). This removes the 1603-row gap and the non-deterministic release iteration in one move.
+
+#### Resolution strategy — primary + article fallback (for decision)
+
+Two tiers, cheapest first. **Tier 1 handles the common case; Tier 2 is the fallback when the namespace does not uniquely pin an assembly.**
+
+**Tier 1 — namespace → assembly (deterministic, no article needed).**
+The ID prefix version-locks the build for these families, so we can pin the matching Ensembl Plants FTP GTF directly:
+| Namespace | Assembly (implied by prefix) | Pinned source | Verified |
+|---|---|---|---|
+| `GRMZM2G…_T0N` | maize AGPv3 | `release-31/…/Zea_mays.AGPv3.31.gtf.gz` | ✅ carries `GRMZM2G059865_T01` |
+| `Os…t…_NN` (RAP) | rice IRGSP-1.0 / RAP-DB | existing `release-60` rice GTF (+ `_NN`→`-NN` normalization) | ✅ base IDs present |
+| `Solyc…2.1` | tomato SL3.0 / ITAG3 | `release-30` tomato GTF (already configured) | ✅ resolves 70 rows |
+| `PGSC…` | potato | already configured | ✅ resolves 467 |
+
+**Tier 2 — origin tool → source article → assembly (fallback).** When a namespace is ambiguous, retired, or a normalization guess is unverifiable, the tool's **publication** is often the only ground truth ("genome downloaded from &lt;DB&gt; release &lt;N&gt;"). We do not have the articles in-repo, but **@dgruano does**. The 1603 currently-unresolved rows trace back to only **three papers**, so this is a bounded manual step:
+
+| Origin tool | Owns (unresolved rows) | Article should confirm |
+|---|---|---|
+| **PreLnc** | 958 rice (100%) + 400 maize | rice IRGSP/RAP release; maize AGPv build |
+| **RNAplonc** | 561 maize (plant-specific tool) | maize AGPv build (expected AGPv3) |
+| **LGC** | 191 rice (overlaps PreLnc) | rice release (cross-check PreLnc) |
+
+**How the fallback plugs in:** the article-confirmed assembly just selects/confirms the `plant_gtf_sources.yaml` release to pin — it does **not** add a new resolver path. Tier 1 already proposes AGPv3 (maize) and IRGSP-1.0 (rice); Tier 2 is there to (a) confirm those two guesses against what PreLnc/RNAplonc actually used, and (b) resolve the rice `_00`↔`-01` suffix question if the FTP spot-check is inconclusive.
+
+**Open decisions for @dgruano:**
+1. Pin AGPv3 maize + rice normalization now (Tier 1), and use the articles only to *confirm* — or read the articles first, then pin?
+2. Rice suffix `_00`: does PreLnc's source treat it as the primary transcript (`-01`) or a gene-level record? (Article or FTP spot-check.)
+3. Retire `biomart_plant_batch` entirely, or keep it as a degraded last resort after the pinned GTFs?
 
 ### TB-3. Ensembl headers mislabelled `ncbi` via embedded-RefSeq substring ✅ FIXED — ⏸ DEFERRED MERGE (branch `fix/parse-ids-embedded-ncbi-substring`)
 - **Symptom:** the first 11 rows of `results/ncbi_genbank_unresolved.tsv` are `invalid_accession` IDs like `NC_010`, `NT_003`, `NP_201`, `xm_003`, `np_205` — surfaced by the TB-1 quarantine filter. They are **not** NCBI IDs at all.
@@ -380,7 +437,7 @@ Each concern was investigated in isolation; full findings in `audit/`:
 
 16. ~~**[blocker] Filter junk IDs before NCBI epost**~~ ✅ **DONE (2026-07-13)** — `resolve_ncbi_genbank.py` now quarantines non-accession IDs (`xm_003`, `np_205`, `np_206`, `nc_201`) via `ACCESSION_RE` before `fetcher.fetch()`/`Entrez.epost`, routing them to unresolved as `invalid_accession`. Unblocks the ~1,615 valid IDs that the crash was discarding. See **TB-1**.
 17. ~~**[blocker] Fix phytozome config-key/`gtf:`-basename mismatch**~~ ✅ **DONE (2026-07-13)** — moved to a `resources/phytozome/<species>/<source_name>.gff3.gz` folder layout so the `{species}` wildcard equals the config key and `sources.get(species)` resolves `genome_id`; kept the `.gene` (not `gene_exons`) variant, pinned via `manifest.json` `portal_file_name`; wrapped `download_phytozome_gtf.py` so no failure is silent. citrus/sorghum/ricinus download immediately; oryza is PURGED (restore workflow). See **TB-2**.
-18. **[transient] Rerun tomato metadata** — `download_metadata_table` for solanum_lycopersicum failed on transient BioMart; rerun, or rely on the already-downloaded plant GTF. See **L5**.
+18. **[not transient] Tomato mart dataset renamed** — `download_metadata_table` for solanum_lycopersicum fails because Plants moved tomato to SL4.0 (`slgca000188115v5cm_eg_gene`, new `mRNA-Solyc…` namespace); the old slug is gone. Tomato is already resolved via plant_gtf (SL3.0). Drop it from `external_metadata_tables`. Same root cause hits `biomart_plant_batch` at scale (1603 rice/maize rows) — see **L5**/**L6**.
 19. **[deferred-merge] Merge Ensembl-mislabel parse fix** — ✅ fixed on branch **`fix/parse-ids-embedded-ncbi-substring`** (commit `208b215`); **not merged** because it's a Stage-1 change that forces a full rerun. Merge when a full rerun is scheduled. See **TB-3**.
 
 ### Cleanup (unchanged)
@@ -436,7 +493,7 @@ awk -F'\t' 'FNR>1{print $NF}' results/sequences/*.failed.tsv | sort | uniq -c
 ### Priority -1: Fix 2026-07-13 run blockers (NEW — actionables #16–18)
 - **#16 — NCBI epost crash (TB-1):** ✅ **DONE (2026-07-13)** — junk IDs filtered before epost in `resolve_ncbi_genbank.py`.
 - **#17 — phytozome key mismatch (TB-2):** ✅ DONE (2026-07-13) — folder-per-species layout (`resources/phytozome/<species>/<source_name>.gff3.gz`), `.gene` pinned via manifest, failures now logged. oryza still needs a JGI restore (PURGED).
-- **#18 — tomato BioMart (L5):** 🟡 transient; rerun.
+- **#18 — plant BioMart (L5/L6):** 🔴 not transient — Plants retired old assemblies/namespaces. Tomato covered by plant_gtf; 1603 rice(RAP)+maize(GRMZM) rows need pinned AGPv3 GTF + RAP normalization, not the mart.
 - **#19 — Ensembl mislabel (TB-3):** ✅ fixed on branch `fix/parse-ids-embedded-ncbi-substring` (`208b215`), ⏸ **deferred merge** — Stage-1 change forces a full rerun; merge when one is scheduled.
 
 ### Priority 0: Land the phytozome/JGI unblock (NEW 2026-07-12)

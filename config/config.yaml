@@ -67,7 +67,9 @@ external_metadata_tables:
   arabidopsis_thaliana: "resources/metadata/arabidopsis_thaliana.tsv"
   oryza_sativa: "resources/metadata/oryza_sativa.tsv"
   zea_mays: "resources/metadata/zea_mays.tsv"
-  solanum_lycopersicum: "resources/metadata/solanum_lycopersicum.tsv"
+  # solanum_lycopersicum dropped 2026-07-13 (audit L5): Ensembl Plants renamed the
+  # tomato mart dataset (SL4.0, new ID namespace) so this is unsatisfiable, and it's
+  # redundant — tomato already resolves via the plant_gtf path (SL3.0, 70 rows).
   glycine_max: "resources/metadata/glycine_max.tsv"
 
 # --- Output ---
