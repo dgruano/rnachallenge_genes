@@ -88,15 +88,25 @@ phytozome_gtf_sources:
       28 rize transcripts have the LOC_ prefix. These are not found in any of the current
       tools, so may come from CNIT. As a default, for now, I am using phytozome 10.
 
+  # RNAPlonc / PreLnc-noncoding maize: GRMZM… = B73 RefGen_v3 (AGPv3) → Phytozome
+  # v11. Repointed 2026-07-14: was the AGPv4 file, but AGPv4 does NOT contain GRMZM
+  # (0/100 input GRMZM cores found in Zea_maysb73v4.AGPv4.gff3.gz). Zm00001d… (AGPv4)
+  # now resolves via the Ensembl Plants v44 entry in plant_gtf_sources.yaml instead.
+  # genome_id: fill from the JGI Phytozome portal (B73 RefGen_v3 / AGPv3 assembly).
+  #   Portal: https://data.jgi.doe.gov/refine-download/phytozome  (search "Zea mays")
+  # ALTERNATIVE (plain HTTP, no JGI, audit-confirmed to carry GRMZM…_T01):
+  #   Ensembl Plants release-31 AGPv3 —
+  #   https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-31/gtf/zea_mays/Zea_mays.AGPv3.31.gtf.gz
+  #   (place locally + point `gtf:` at it, same as the old AGPv4 file was placed).
   zea_mays:
-    species_query: "Zea mays B73"
-    phytozome_version: 13
-    genome_id: 833
-    gtf: "resources/ensembl_plants/Zea_maysb73v4.AGPv4.gff3.gz"
+    species_query: "Zea mays B73 RefGen_v3"
+    phytozome_version: 11
+    genome_id: FILL_ME__phytozome_v11_zea_mays_agpv3_genome_id
+    gtf: "resources/phytozome/zea_mays/FILL_ME__zea_mays_agpv3.gene.gff3.gz"
     notes: >
-      This entry is for Zea mays B73 v5, which is specific of those
-      ids that start with Zm00001d. Some others are easily found in Gencode Plants
-      or Gramene Maize, but not these.
+      GRMZM… (AGPv3 / RefGen_v3). RNAPlonc + PreLnc-noncoding maize via GreeNC/
+      Phytozome v11. Zm00001d… (AGPv4) is a DIFFERENT assembly → Ensembl Plants
+      v44 (see plant_gtf_sources.yaml). Verified by ID presence: GRMZM ∉ AGPv4.
 
   # TEMPORARILY DISABLED 2026-07-12 — no local GFF3 yet; needs a JGI download.
   # Re-enable once resources/phytozome/solanum_tuberosum.gff3.gz is on disk.
@@ -131,6 +141,30 @@ phytozome_gtf_sources:
     notes: >
       Phytozome genome_id 145 resolves to Vitis vinifera Genoscope.12X.
       Portal annotation file: Vvinifera_145_Genoscope.12X.gene_exons.gff3.gz.
+
+  # ── RNAPlonc, added 2026-07-14 — currently unresolved (missing_coordinates) ──
+  # Bradi… (142 rows). Phytozome v11 Brachypodium distachyon (Bd21).
+  # genome_id: fill from the JGI portal (search "Brachypodium distachyon").
+  #   Portal: https://data.jgi.doe.gov/refine-download/phytozome
+  #   GreeNC species page: http://greenc.sequentiabiotech.com/wiki/Species:Brachypodium_distachyon
+  brachypodium_distachyon:
+    species_query: "Brachypodium distachyon"
+    phytozome_version: 11
+    genome_id: FILL_ME__phytozome_v11_brachypodium_distachyon_genome_id
+    gtf: "resources/phytozome/brachypodium_distachyon/FILL_ME__brachypodium_distachyon.gene.gff3.gz"
+    notes: >
+      Used in RNAPlonc. Bradi… IDs. Phytozome v11 (GreeNC uses Phytozome).
+
+  # Manes.… (127 rows). Phytozome v11 Manihot esculenta.
+  # genome_id: fill from the JGI portal (search "Manihot esculenta").
+  #   GreeNC species page: http://greenc.sequentiabiotech.com/wiki/Species:Manihot_esculenta
+  manihot_esculenta:
+    species_query: "Manihot esculenta"
+    phytozome_version: 11
+    genome_id: FILL_ME__phytozome_v11_manihot_esculenta_genome_id
+    gtf: "resources/phytozome/manihot_esculenta/FILL_ME__manihot_esculenta.gene.gff3.gz"
+    notes: >
+      Used in RNAPlonc. Manes.… IDs. Phytozome v11 (GreeNC uses Phytozome).
 
   # TODO: Enable when the local GFF3 is available.
   # Vitis legacy IDs in this project use Genoscope.12X IDs:
