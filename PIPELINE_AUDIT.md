@@ -5,6 +5,57 @@ _Date: 2026-07-14 · Branch: `main` · HEAD: `7ab78ce` (phytozome genome-FASTA e
 > **📌 This document is the source of truth for pipeline health.**
 > Every agent (or person) who investigates or fixes anything **must finish by updating this file** — add findings to the right section (Things That Break / Overcomplicated Patterns / Legitimate Data Issues), tick or renumber the Actionables, and refresh Next Steps. Leave the audit consistent with reality before ending your turn. If a prior conclusion is wrong, mark it superseded rather than deleting the history.
 
+## Plant resolution — namespace-keyed v44/Phytozome-v11 (2026-07-14, branch `fix/rnaplonc-ensembl-plants-v44`)
+
+⏳ **CODE-DONE, URLs pending, NOT yet rerun.** Reworks how plant transcripts pick a
+reference assembly, driven by the corrected source model. **Supersedes L6's AGPv3/v44
+guesswork** with a *verified* namespace→assembly mapping. Spec:
+[docs/superpowers/specs/2026-07-14-tool-aware-plant-resolution-design.md](docs/superpowers/specs/2026-07-14-tool-aware-plant-resolution-design.md).
+
+**Corrected source model** (from `dani_notes.md` + user):
+- **RNAPlonc → Phytozome v11** (its GreeNC source is Phytozome-based; v10 had no annotation
+  files → v11 substitute). *No separate GreeNC resolver* — folded into the Phytozome path.
+- **PreLnc coding → Ensembl Plants v44**; PreLnc non-coding → GreeNC (≈ Phytozome v11).
+
+**Key correctness finding — resolve by namespace, not by (species, tool).** The worry that one
+species needs different assemblies per tool is real, but the *namespace* already encodes it,
+and it is **verified by ID presence**, not assumed:
+- Maize: **0 of 100** input `GRMZM…` cores exist in `Zea_maysb73v4.AGPv4.gff3.gz`; `Zm00001d…`
+  is native AGPv4. → `GRMZM` (AGPv3, RNAPlonc) and `Zm00001d` (AGPv4, PreLnc-coding) are
+  **disjoint namespaces on different assemblies**. The tool split *is* the namespace split.
+- Rice `Os…t` shared by PreLnc(v44) + LGC(r30): same IRGSP-1.0 assembly → coordinates agree;
+  tool only picks an annotation *release*. No namespace maps to two assemblies in this input.
+
+**Differentiating assembly versions** (the method, so this isn't re-litigated): (1) read the
+header's inline tag when present — `Zm00001d…_T001 … chromosome:B73_RefGen_v4:…` = AGPv4;
+(2) else ID prefix encodes the generation — `GRMZM`=RefGen_v3/AGPv3, `Zm00001d`=RefGen_v4/AGPv4,
+`Zm00001e`=NAM5.0; (3) **always confirm by `zgrep -c -Ff <ids> <gff>.gz`** — near-zero ⇒ wrong
+assembly. This check is now automated (below).
+
+**Landed in code** (`90fe4d0`):
+- `parse_ids.py` — splits maize `Zm00001d…` (→ v44/AGPv4) from `GRMZM…` (→ Phytozome v11/AGPv3);
+  the 512 `Zm00001d` IDs were previously *unclassified*.
+- `plant_gtf_sources.yaml` — PreLnc-coding (`arabidopsis`, `oryza_sativa`, maize `Zm00001d`)
+  repointed to **release-44**, URLs are `FILL_ME__…` placeholders (grep `FILL_ME`).
+- `phytozome_gtf_sources.yaml` — maize repointed **AGPv4→AGPv3 v11** (for `GRMZM`); **added
+  `brachypodium_distachyon` + `manihot_esculenta`** (RNAPlonc `Bradi`/`Manes.`, previously
+  `missing_coordinates`). `genome_id`/GFF filename are `FILL_ME__…` (fill from JGI portal).
+- `resolution_guard.py` + wiring — each plant resolver computes a per-species match rate and
+  **exits non-zero** if a species matches < `plant_resolution_min_match_rate` (default 0.02) of
+  its IDs against a configured source (the wrong-assembly signature). Override with
+  `plant_resolution_strict: false`. Unit test `tests/test_resolution_guard.py` (5 cases).
+
+**Maize split works via the two resolvers, each keyed on species:** plant_gtf `zea_mays` = v44
+(matches `Zm00001d`), phytozome `zea_mays` = AGPv3 v11 (matches `GRMZM`); each ID matches exactly
+one file, the other routes to that resolver's *unresolved* output, and `merge_resolved` unions
+the resolved rows. DAG validated (`snakemake -n --forcerun`): new species fan out into
+download+resolve jobs; execution will fail only on the unfilled `FILL_ME` URLs/genome_ids.
+
+**⏭ Blocked on @dgruano:** fill the `FILL_ME__` v44 URLs (`plant_gtf_sources.yaml`) and the
+Phytozome v11 `genome_id`s (`phytozome_gtf_sources.yaml`, brachypodium/manihot/maize-AGPv3),
+then rerun (command in Next Steps / commit). Expected recovery: 561 `GRMZM` + 512 `Zm00001d`
+maize + 142 `Bradi` + 127 `Manes.` + rice/arabidopsis PreLnc-coding.
+
 ## Run refresh — 2026-07-14 (phytozome fix landed)
 
 Latest `results/` (`grep -c '^>' output.fasta` + `FNR>1` failure tally). Two reruns on 2026-07-14: the first (post-`d546a0e`) only half-applied the phytozome fix; the **phytozome resolver regeneration (Priority 0) is now DONE** and the 503 rows extract.
@@ -121,6 +172,12 @@ then exited on three independent failures. Root-caused below. Two are real bugs
 - **✅ Fix landed (2026-07-13):** `solanum_lycopersicum` **commented out** (not deleted) of `external_metadata_tables` in [config/config.yaml](config/config.yaml), with an inline note pointing here. Kept as a comment so the intent is visible and it's trivially restorable if Ensembl Plants ever re-serves an SL3.0-compatible tomato mart. Dry-run confirms no `download_metadata_table` job for tomato; the other 4 species still run.
 
 ### L6. `biomart_plant_batch` resolves **0 rows** — release-iteration finds nothing 🔴 ⏸ DETACHED (2026-07-13)
+
+> **⤷ Superseded in part (2026-07-14):** the AGPv3/v44 namespace→assembly reasoning below is
+> now **verified and implemented** — see [Plant resolution — namespace-keyed v44/Phytozome-v11](#plant-resolution--namespace-keyed-v44phytozome-v11-2026-07-14-branch-fixrnaplonc-ensembl-plants-v44).
+> Maize `GRMZM`→Phytozome v11 (AGPv3), `Zm00001d`→Ensembl Plants v44 (AGPv4), plus new
+> Phytozome brachypodium/manihot. Rice-suffix tie-break (open decision #2) is moot: PreLnc(v44)
+> and LGC(r30) share IRGSP-1.0, so coordinates agree.
 
 **⏸ Detached as a quick fix (2026-07-13) — answers open decision #3 below.** Because the rule contributes **0 unique rows** (the 543 covered rows all resolve via plant_gtf/phytozome) while the flaky live-mart release loop makes runs slow and non-deterministic, [biomart_plant_batch.smk](workflow/rules/biomart_plant_batch.smk) no longer calls `biomart_plant_batch.py`. The rule now runs a trivial inline `run:` block that emits a **header-only** `biomart_resolved.tsv` (keeps `merge_resolved` satisfied) and passes every input ID through to `biomart_unresolved.tsv` with `reason=biomart_detached`. No network, `runtime` dropped 30→5 min / `mem_mb` 4096→512. Nothing else changed: `merge_resolved` is the only consumer of `biomart_resolved`, nothing consumes `biomart_unresolved`, and the plant GTF/Phytozome/Gramene fallbacks run off `external_*`, not BioMart. Dry-run parses clean. **Re-enable** by restoring `script: ../scripts/biomart_plant_batch.py` (script kept intact). This is a stop-gap, not the durable fix — the 1603-row gap still needs the pinned AGPv3/IRGSP GTFs (Tier 1 below).
 
